@@ -26,9 +26,21 @@ export function checkQueryPlan(plan: QueryPlan): Finding[] {
   if (plan.sourceDataset !== ALLOWED_SOURCE_DATASET) {
     findings.push({ code: "plan_source_not_allowed", detail: plan.sourceDataset });
   }
-  for (const dimension of plan.dimensions) {
-    if (!(SAFE_DIMENSIONS as readonly string[]).includes(dimension)) {
-      findings.push({ code: "plan_dimension_not_allowed", detail: dimension });
+  if (plan.dimensions.length > SAFE_DIMENSIONS.length) {
+    // Same cap rationale as too_many_columns: no valid plan exceeds the safe
+    // set, and one finding per bogus dimension would let a huge plan exhaust
+    // the validator instead of being judged by it.
+    findings.push({ code: "too_many_dimensions", detail: String(plan.dimensions.length) });
+  } else {
+    // A plan no real query produced must not be approved and hash-bound:
+    // duplicates survive the engine's set comparison against columns.
+    if (new Set(plan.dimensions).size !== plan.dimensions.length) {
+      findings.push({ code: "duplicate_dimension" });
+    }
+    for (const dimension of plan.dimensions) {
+      if (!(SAFE_DIMENSIONS as readonly string[]).includes(dimension)) {
+        findings.push({ code: "plan_dimension_not_allowed", detail: dimension });
+      }
     }
   }
   if (!(ALLOWED_METRICS as readonly string[]).includes(plan.metric)) {

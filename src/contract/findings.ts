@@ -19,6 +19,8 @@ export type FindingCode =
   | "value_contains_contact_pattern"
   // query plan and provenance
   | "plan_source_not_allowed"
+  | "too_many_dimensions"
+  | "duplicate_dimension"
   | "plan_dimension_not_allowed"
   | "plan_metric_not_allowed"
   | "plan_filter_not_allowed"

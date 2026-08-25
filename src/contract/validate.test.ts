@@ -32,6 +32,24 @@ describe("validateRelease", () => {
     expect(second.contractHash).not.toBe(first.contractHash);
   });
 
+  it("denies a plan with duplicate dimensions even when the column sets match", () => {
+    const result = validateRelease(
+      makeCandidate({
+        queryPlan: {
+          sourceDataset: "support",
+          dimensions: ["week", "region", "region"],
+          metric: "ticket_count",
+          filters: [],
+          joins: [],
+        },
+      }),
+    );
+    expect(result.status).toBe("denied");
+    if (result.status === "denied") {
+      expect(result.findings).toContainEqual({ code: "duplicate_dimension" });
+    }
+  });
+
   it("denies columns that are not exactly what the plan computes", () => {
     const result = validateRelease(
       makeCandidate({

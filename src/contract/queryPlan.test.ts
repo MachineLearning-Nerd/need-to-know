@@ -41,6 +41,19 @@ describe("checkQueryPlan", () => {
     );
   });
 
+  it("caps oversized dimension lists with one finding instead of one per entry", () => {
+    const bogus = Array.from({ length: 10_000 }, (_, i) => `dim_${i}`);
+    expect(checkQueryPlan({ ...goodPlan, dimensions: bogus })).toEqual([
+      { code: "too_many_dimensions", detail: "10000" },
+    ]);
+  });
+
+  it("rejects duplicate dimensions the set comparison would collapse", () => {
+    expect(checkQueryPlan({ ...goodPlan, dimensions: ["week", "region", "region"] })).toEqual([
+      { code: "duplicate_dimension" },
+    ]);
+  });
+
   it("rejects any filter or join", () => {
     expect(codes(checkQueryPlan({ ...goodPlan, filters: [{ column: "region" }] }))).toContain(
       "plan_filter_not_allowed",
