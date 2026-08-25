@@ -7,8 +7,15 @@
     "node": ">=24"
   },
   "devDependencies": {
+    "@biomejs/biome": "2.5.10",
     "@types/node": "26.2.0",
     "typescript": "7.0.2",
     "vitest": "4.1.11"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "format": "biome format --write ."
   }
 }
