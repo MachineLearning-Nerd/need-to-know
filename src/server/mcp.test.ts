@@ -173,10 +173,15 @@ describe("vault MCP scaffold", () => {
     socket.on("error", () => undefined);
     await new Promise<void>((resolve) => socket.once("connect", () => resolve()));
     socket.write("POST /mcp HTTP/1.1\r\nHost: local");
+    // Let the server register the connection: closing in the same tick as the
+    // write returns immediately either way, which would make this test pass
+    // with the guard removed.
+    await new Promise((resolve) => setTimeout(resolve, 10));
     const started = Date.now();
     await held.close();
-    // Without closeAllConnections this never resolves: close() waits on every
-    // open connection, and this one never finishes its request.
+    // Without closeAllConnections this would not resolve until Node's 60s
+    // headersTimeout: close() waits on every open connection, and this one
+    // never finishes its request.
     expect(Date.now() - started).toBeLessThan(2000);
     socket.destroy();
   });

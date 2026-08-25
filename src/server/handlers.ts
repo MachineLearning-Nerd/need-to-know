@@ -178,27 +178,30 @@ export function createVaultHandlers(db: VaultDatabase, store: VaultStore): Vault
         return errorResult("mission_not_authorized", mission.reasons.join(","));
       }
       const dimensions = input.dimensions;
-      if (dimensions.length > SAFE_DIMENSIONS.length) {
-        return errorResult("too_many_dimensions", String(dimensions.length));
-      }
-      if (new Set(dimensions).size !== dimensions.length) {
-        return errorResult("duplicate_dimension");
-      }
+      // Allowlists first, structural checks after: reversed, one padding
+      // element would make a malformed-plan denial fire ahead of the
+      // allowlist and swallow the audit record, so a caller could name every
+      // sensitive column and leave no trace. Both reaches are auditable even
+      // though no queryId exists yet.
       for (const dimension of dimensions) {
         if (!(SAFE_DIMENSIONS as readonly string[]).includes(dimension)) {
-          // Grouping by a non-safe column is an attempt to reach sensitive
-          // data, so it is auditable even though no queryId exists yet.
           store.recordAudit("-", "dimension_not_allowed");
           return errorResult("dimension_not_allowed", dimension.slice(0, 120));
         }
       }
       if (!(ALLOWED_METRICS as readonly string[]).includes(input.metric)) {
-        // Naming a sensitive column here is the same reach as naming it in
-        // dimensions. The malformed-plan denials above stay unaudited on
-        // purpose: they are client bugs, not attempts on sensitive columns,
-        // and auditing them would grow the uncapped log for nothing.
         store.recordAudit("-", "metric_not_allowed");
         return errorResult("metric_not_allowed", input.metric.slice(0, 120));
+      }
+      // Only reachable once every named column is allowlisted, so these two
+      // denials cannot carry a sensitive column name. They stay unaudited on
+      // purpose: malformed plans are client bugs, not reaches for sensitive
+      // data, and auditing them would grow the uncapped log for nothing.
+      if (dimensions.length > SAFE_DIMENSIONS.length) {
+        return errorResult("too_many_dimensions", String(dimensions.length));
+      }
+      if (new Set(dimensions).size !== dimensions.length) {
+        return errorResult("duplicate_dimension");
       }
 
       // Suppression happens inside the vault: a small cell never appears in

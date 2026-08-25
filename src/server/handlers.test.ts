@@ -433,6 +433,21 @@ describe("fail-closed hardening", () => {
       expect(store.audits().at(-1)?.outcome, metric).toBe("metric_not_allowed");
     }
 
+    // Padding the request so a structural denial would fire first must not
+    // swallow the record: one duplicate dimension used to hide the reach.
+    const shadowed: Array<[string[], string]> = [
+      [["week", "week"], "email"],
+      [["week", "region", "category", "email"], "ticket_count"],
+      [["week", "week", "phone"], "ticket_count"],
+      [["customer_id", "email", "phone", "free_text"], "free_text"],
+    ];
+    for (const [dimensions, metric] of shadowed) {
+      const before = store.audits().length;
+      handlers.prepareAnalysis({ ...goodMission, dimensions, metric });
+      expect(store.audits().length, `${dimensions.join(",")}/${metric}`).toBe(before + 1);
+      expect(store.audits().at(-1)?.outcome).toMatch(/^(dimension|metric)_not_allowed$/);
+    }
+
     const prepared = payload(
       handlers.prepareAnalysis({ ...goodMission, dimensions: ["week"], metric: "ticket_count" }),
     ) as unknown as { queryId: string };

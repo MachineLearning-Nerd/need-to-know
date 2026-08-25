@@ -73,7 +73,8 @@ function buildMcpServer(handlers: VaultToolHandlers): McpServer {
         metric: z.string(),
       },
       // Not read-only: preparing persists the candidate under a new queryId.
-      // Not destructive either — it only adds state, never transitions it.
+      // Not destructive to the dataset: it adds a candidate, and evicts the
+      // oldest one once the store cap is reached.
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     (input) => guarded(() => handlers.prepareAnalysis(input)),
