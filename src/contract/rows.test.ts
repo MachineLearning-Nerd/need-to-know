@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
 
-import { checkColumns, checkRows, MAX_RELEASE_ROWS, MIN_GROUP_SIZE } from "./rows.js";
+import { CATEGORIES, REGIONS, SMALL_CELL, WEEKS } from "../vault/seed.js";
+import {
+  ALLOWED_CATEGORY_VALUES,
+  ALLOWED_REGION_VALUES,
+  ALLOWED_WEEK_VALUES,
+  checkColumns,
+  checkRows,
+  MAX_RELEASE_ROWS,
+  MIN_GROUP_SIZE,
+} from "./rows.js";
 
 const COLUMNS = ["week", "region", "ticket_count"];
 const goodRow = { week: "2026-W33", region: "NA", ticket_count: 12, group_size: 12 };
@@ -54,6 +63,25 @@ describe("checkRows", () => {
     expect(codes(checkRows([{ ...goodRow, group_size: 2.5 }], COLUMNS))).toContain(
       "group_size_missing",
     );
+  });
+
+  it("keeps dimension domains in lockstep with the seeded dataset", () => {
+    expect([...ALLOWED_WEEK_VALUES]).toEqual([...WEEKS]);
+    expect([...ALLOWED_REGION_VALUES]).toEqual([...REGIONS, SMALL_CELL.region]);
+    expect([...ALLOWED_CATEGORY_VALUES]).toEqual([...CATEGORIES]);
+  });
+
+  it("rejects plausible-looking values the dataset cannot produce", () => {
+    for (const smuggle of [
+      { ...goodRow, week: "2026-W99" },
+      { ...goodRow, region: "CUSTOMER" },
+      { ...goodRow, region: "DINESH" },
+    ]) {
+      expect(codes(checkRows([smuggle], COLUMNS))).toContain("value_out_of_domain");
+    }
+    expect(
+      codes(checkRows([{ ...goodRow, category: "alice" }], [...COLUMNS, "category"])),
+    ).toContain("value_out_of_domain");
   });
 
   it("rejects contact-shaped and non-releasable values", () => {

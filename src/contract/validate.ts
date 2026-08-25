@@ -56,6 +56,13 @@ export function outputHashOf(candidate: ReleaseCandidate): Sha256Hex {
   );
 }
 
+// Trust boundary: validateRelease proves the evidence is internally
+// consistent (group sizes, provenance, plan), not where it came from. A
+// caller who fabricates group_size can only be caught by the party that owns
+// the data — the vault server constructs candidates from its own queries and
+// keeps the prepared-analysis snapshot keyed by provenance.queryId, so
+// release-time verification compares against vault-owned evidence rather
+// than caller assertions.
 export function validateRelease(candidate: unknown): ValidationResult {
   // Everything — including parsing, whose type guards read properties — is
   // guarded: accessors on hostile objects (getters, proxies) can throw from

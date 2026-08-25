@@ -18,14 +18,28 @@ export const GROUP_SIZE_FIELD = "group_size";
 
 export type AllowedReleaseColumn = (typeof ALLOWED_RELEASE_COLUMNS)[number];
 
+// Dimension domains are membership in the closed value sets that dataset
+// support-tickets-v1 can produce, not shape checks: a plausible-looking week
+// ("2026-W99") or an identifier relabeled as a region ("CUSTOMER") matches a
+// pattern but is not a value the dataset contains, so it can only be smuggled
+// content. A test pins these to the vault seed constants.
+export const ALLOWED_WEEK_VALUES = Object.freeze([
+  "2026-W30",
+  "2026-W31",
+  "2026-W32",
+  "2026-W33",
+] as const);
+export const ALLOWED_REGION_VALUES = Object.freeze(["NA", "EU", "APAC"] as const);
+export const ALLOWED_CATEGORY_VALUES = Object.freeze(["billing", "login", "performance"] as const);
+
 // Every releasable column has a closed value domain. A safe-dimension column
 // is not a free string slot: without this, raw identifiers or free text could
 // cross the boundary relabeled as "week" or "region".
 const COLUMN_DOMAINS: Readonly<Record<AllowedReleaseColumn, (value: unknown) => boolean>> =
   Object.freeze({
-    week: (value) => typeof value === "string" && /^\d{4}-W\d{2}$/.test(value),
-    region: (value) => typeof value === "string" && /^[A-Z]{2,8}$/.test(value),
-    category: (value) => typeof value === "string" && /^[a-z][a-z_]{0,31}$/.test(value),
+    week: (value) => (ALLOWED_WEEK_VALUES as readonly unknown[]).includes(value),
+    region: (value) => (ALLOWED_REGION_VALUES as readonly unknown[]).includes(value),
+    category: (value) => (ALLOWED_CATEGORY_VALUES as readonly unknown[]).includes(value),
     ticket_count: (value) =>
       typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 1_000_000,
     avg_resolution_hours: (value) =>
