@@ -4,7 +4,9 @@ import { CanonicalizeError, canonicalize, sha256Canonical } from "./canonical.js
 
 describe("canonicalize", () => {
   it("is independent of object key order", () => {
-    expect(canonicalize({ b: 1, a: { d: 2, c: 3 } })).toBe(canonicalize({ a: { c: 3, d: 2 }, b: 1 }));
+    expect(canonicalize({ b: 1, a: { d: 2, c: 3 } })).toBe(
+      canonicalize({ a: { c: 3, d: 2 }, b: 1 }),
+    );
   });
 
   it("keeps array order significant", () => {
