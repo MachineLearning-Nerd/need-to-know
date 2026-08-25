@@ -66,10 +66,9 @@ describe("vault database", () => {
     db.close();
   });
 
-  it("holds the canary email and free text", () => {
+  it("holds the exact canary row", () => {
     const db = openVaultDatabase();
-    expect(db.hasEmail(CANARY.email)).toBe(true);
-    expect(db.hasFreeTextContaining("IGNORE ALL PREVIOUS INSTRUCTIONS")).toBe(true);
+    expect(db.hasCanaryRow()).toBe(true);
     db.close();
   });
 
@@ -79,11 +78,9 @@ describe("vault database", () => {
     db.close();
   });
 
-  it("exposes no raw-row accessor", () => {
+  it("exposes no raw-row accessor and no parameterized sensitive-column probe", () => {
     const db = openVaultDatabase();
-    expect(Object.keys(db).sort()).toEqual(
-      ["close", "groupSize", "hasEmail", "hasFreeTextContaining", "rowCount"].sort(),
-    );
+    expect(Object.keys(db).sort()).toEqual(["close", "groupSize", "hasCanaryRow", "rowCount"]);
     db.close();
   });
 });

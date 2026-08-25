@@ -1,14 +1,14 @@
 import { DatabaseSync } from "node:sqlite";
 
 import { TICKETS_DDL } from "./schema.js";
-import { seedRows } from "./seed.js";
+import { CANARY, seedRows } from "./seed.js";
 
-// The DatabaseSync handle stays inside this closure: only narrow, typed queries
-// leave the module, so no caller can read raw ticket rows through it.
+// The DatabaseSync handle stays inside this closure and no exported query takes
+// a caller-chosen probe against a sensitive column — a parameterized substring
+// or equality check would be a boolean oracle that leaks row contents bit by bit.
 export type VaultDatabase = {
   rowCount(): number;
-  hasEmail(email: string): boolean;
-  hasFreeTextContaining(needle: string): boolean;
+  hasCanaryRow(): boolean;
   groupSize(week: string, region: string): number;
   close(): void;
 };
@@ -23,19 +23,25 @@ export function openVaultDatabase(location = ":memory:"): VaultDatabase {
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   db.exec("BEGIN");
-  for (const row of seedRows()) {
-    insert.run(
-      row.customer_id,
-      row.email,
-      row.phone,
-      row.free_text,
-      row.week,
-      row.region,
-      row.category,
-      row.resolution_hours,
-    );
+  try {
+    for (const row of seedRows()) {
+      insert.run(
+        row.customer_id,
+        row.email,
+        row.phone,
+        row.free_text,
+        row.week,
+        row.region,
+        row.category,
+        row.resolution_hours,
+      );
+    }
+    db.exec("COMMIT");
+  } catch (error) {
+    db.exec("ROLLBACK");
+    db.close();
+    throw error;
   }
-  db.exec("COMMIT");
 
   const count = (sql: string, ...params: string[]): number => {
     const result = db.prepare(sql).get(...params);
@@ -44,9 +50,12 @@ export function openVaultDatabase(location = ":memory:"): VaultDatabase {
 
   return {
     rowCount: () => count("SELECT COUNT(*) AS n FROM tickets"),
-    hasEmail: (email) => count("SELECT COUNT(*) AS n FROM tickets WHERE email = ?", email) > 0,
-    hasFreeTextContaining: (needle) =>
-      count("SELECT COUNT(*) AS n FROM tickets WHERE instr(free_text, ?) > 0", needle) > 0,
+    hasCanaryRow: () =>
+      count(
+        "SELECT COUNT(*) AS n FROM tickets WHERE email = ? AND free_text = ?",
+        CANARY.email,
+        CANARY.freeText,
+      ) > 0,
     groupSize: (week, region) =>
       count("SELECT COUNT(*) AS n FROM tickets WHERE week = ? AND region = ?", week, region),
     close: () => db.close(),
