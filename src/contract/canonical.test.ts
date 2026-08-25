@@ -13,6 +13,11 @@ describe("canonicalize", () => {
     expect(canonicalize([1, 2])).not.toBe(canonicalize([2, 1]));
   });
 
+  it("serializes negative zero as zero by design", () => {
+    expect(canonicalize(-0)).toBe("0");
+    expect(canonicalize({ n: -0 })).toBe(canonicalize({ n: 0 }));
+  });
+
   it("serializes the strict value domain", () => {
     expect(canonicalize({ s: "x", n: 1.5, b: true, z: null, a: [1] })).toBe(
       '{"a":[1],"b":true,"n":1.5,"s":"x","z":null}',

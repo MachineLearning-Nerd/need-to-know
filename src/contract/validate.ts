@@ -35,22 +35,34 @@ export function contractHashOf(candidate: ReleaseCandidate): Sha256Hex {
   return sha256Canonical(contract);
 }
 
+// The output hash covers the rows projected to the declared columns — the
+// exact released content. group_size is enforcement metadata, never released,
+// so it must not shift the hash the approver signs off on.
 export function outputHashOf(candidate: ReleaseCandidate): Sha256Hex {
-  return sha256Canonical(candidate.rows);
+  return sha256Canonical(
+    candidate.rows.map((row) => {
+      const projected: Record<string, string | number> = {};
+      for (const column of candidate.columns) {
+        const value = row[column];
+        if (value !== undefined) projected[column] = value;
+      }
+      return projected;
+    }),
+  );
 }
 
 export function validateRelease(candidate: unknown): ValidationResult {
-  const parsed = parseCandidate(candidate);
-  if (parsed === null) {
-    // Malformed input is not a policy verdict — it is an unclassifiable
-    // request, so it fails closed as needs_review rather than denied.
-    return { status: "needs_review", findings: [{ code: "candidate_malformed" }] };
-  }
-
-  // The whole check-and-hash phase is guarded: property accessors on hostile
-  // objects (getters, proxies) can throw from inside any check, and an escaped
-  // exception is not a fail-closed verdict.
+  // Everything — including parsing, whose type guards read properties — is
+  // guarded: accessors on hostile objects (getters, proxies) can throw from
+  // any property read, and an escaped exception is not a fail-closed verdict.
   try {
+    const parsed = parseCandidate(candidate);
+    if (parsed === null) {
+      // Malformed input is not a policy verdict — it is an unclassifiable
+      // request, so it fails closed as needs_review rather than denied.
+      return { status: "needs_review", findings: [{ code: "candidate_malformed" }] };
+    }
+
     const findings: Finding[] = [];
     const mission = authorizeMission(parsed.purpose, parsed.audience);
     if (!mission.authorized) findings.push(...mission.reasons.map((code) => ({ code })));
@@ -112,10 +124,12 @@ const PROVENANCE_KEYS = Object.freeze(["sourceDataset", "datasetVersion", "query
 
 // Unknown keys are rejected, not ignored: the contract hash must cover exactly
 // what the rules inspected, so a field no rule looked at can never be part of
-// what the approver ends up authorizing.
+// what the approver ends up authorizing. Symbol and non-enumerable own keys are
+// invisible to both the checks and the canonical hash, so they are rejected too.
 function hasExactKeys(record: Record<string, unknown>, keys: readonly string[]): boolean {
-  const own = Object.keys(record);
-  return own.length === keys.length && own.every((key) => keys.includes(key));
+  if (Object.getOwnPropertySymbols(record).length > 0) return false;
+  const allOwn = Object.getOwnPropertyNames(record);
+  return allOwn.length === keys.length && allOwn.every((key) => keys.includes(key));
 }
 
 function parseCandidate(value: unknown): ReleaseCandidate | null {

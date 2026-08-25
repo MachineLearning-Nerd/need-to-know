@@ -22,6 +22,8 @@ function write(value: unknown, seen: WeakSet<object>): string {
       return value ? "true" : "false";
     case "number":
       if (!Number.isFinite(value)) throw new CanonicalizeError("non-finite number");
+      // -0 serializes as "0" by design: JSON has no negative zero, so the
+      // released canonical bytes are identical — equal values, equal hash.
       return JSON.stringify(value);
     case "object":
       break;

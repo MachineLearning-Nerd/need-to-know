@@ -53,8 +53,14 @@ export function checkProvenance(
   if (provenance.sourceDataset !== plan.sourceDataset) {
     findings.push({ code: "provenance_source_mismatch", detail: provenance.sourceDataset });
   }
-  if (provenance.datasetVersion !== DATASET_VERSION || datasetVersion !== DATASET_VERSION) {
-    findings.push({ code: "dataset_version_mismatch", detail: provenance.datasetVersion });
+  if (provenance.datasetVersion !== DATASET_VERSION) {
+    findings.push({
+      code: "dataset_version_mismatch",
+      detail: `provenance: ${provenance.datasetVersion}`,
+    });
+  }
+  if (datasetVersion !== DATASET_VERSION) {
+    findings.push({ code: "dataset_version_mismatch", detail: `candidate: ${datasetVersion}` });
   }
   if (policyVersion !== POLICY_VERSION) {
     findings.push({ code: "policy_version_mismatch", detail: policyVersion });

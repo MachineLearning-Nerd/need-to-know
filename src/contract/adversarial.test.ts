@@ -103,6 +103,27 @@ describe("hostile object shapes fail closed", () => {
     expect(result.status).toBe("needs_review");
   });
 
+  it("returns needs_review when a top-level property accessor throws", () => {
+    const trap = { ...makeCandidate() } as Record<string, unknown>;
+    Object.defineProperty(trap, "purpose", {
+      enumerable: true,
+      get() {
+        throw new Error("hostile top-level getter");
+      },
+    });
+    expect(validateRelease(trap).status).toBe("needs_review");
+  });
+
+  it("rejects symbol and non-enumerable own keys", () => {
+    const withSymbol = { ...makeCandidate() } as Record<string | symbol, unknown>;
+    withSymbol[Symbol("smuggled")] = "payload";
+    expect(validateRelease(withSymbol).status).toBe("needs_review");
+
+    const withHidden = { ...makeCandidate() } as Record<string, unknown>;
+    Object.defineProperty(withHidden, "hidden", { enumerable: false, value: "payload" });
+    expect(validateRelease(withHidden).status).toBe("needs_review");
+  });
+
   it("rejects unknown top-level, plan, and provenance keys", () => {
     const base = makeCandidate();
     const cases = [
