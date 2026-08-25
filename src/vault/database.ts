@@ -15,12 +15,16 @@ export type AggregateCell = Readonly<{
 // probe a sensitive column — a parameterized substring or equality check
 // against email or free_text would be a boolean oracle that leaks row contents
 // bit by bit. groupSize() is parameterized, but only over two safe dimensions.
-// It returns a raw pre-suppression count for a (week, region) pair, which is
-// exactly what the aggregate surface withholds: subtract the published
-// (week, region) rollup and the residual is how many rows are hidden under
-// that pair — and wherever only one category cell is suppressed there, the
-// residual is that cell's precise size, as low as a single individual in the
-// current dataset. It must stay vault-internal and must never back a tool.
+// It returns a raw pre-suppression count for a (week, region) pair, and what
+// that adds is localization, not existence: that suppressed cells of size 1
+// exist at all is already derivable from describe_dataset's rowCount and
+// suppressedCells. Subtract the published rollup and the residual is the rows
+// hidden under that pair; combined with which categories are missing from the
+// published finest view, it usually pins the exact size of every suppressed
+// cell there — in the current dataset, down to a lone individual narrowed to
+// one week, one region, and two candidate categories. The number of suppressed
+// cells under a pair is not a safety line: pairs with several are usually
+// solvable too. It must stay vault-internal and must never back a tool.
 // aggregate() takes no caller values at all: only identifiers checked against
 // the frozen allowlists below ever reach the SQL text.
 export type VaultDatabase = {

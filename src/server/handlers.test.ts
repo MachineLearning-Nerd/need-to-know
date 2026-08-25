@@ -477,7 +477,9 @@ describe("fail-closed hardening", () => {
     expect(recorded?.code).toBe("evidence_mismatch");
     // Freezing the returned array is cosmetic; returning a copy is the guard.
     // Handing out the live log would let any consumer splice enforcement
-    // records away, which is the one fail-open the audit trail cannot survive.
+    // records away. The copy is shallow, so the records stay shared by
+    // reference — freezing each one is what stops an outcome being rewritten
+    // in place, which is the same fail-open by a quieter route.
     expect(store.audits()).not.toBe(store.audits());
   });
 
@@ -525,6 +527,13 @@ describe("fail-closed hardening", () => {
     ) as unknown as { queryId: string };
     const entry = store.getPrepared(prepared.queryId);
     if (entry === undefined) throw new Error("entry must exist");
+    // The candidate object itself is the one that matters: render_safe_chart
+    // re-serves entry.candidate.rows after release with no recompute, so an
+    // in-process swap of that array puts a group_size 1 cell through a public
+    // tool. Verified by counterfactual — without this freeze the chart serves
+    // [{"region":"NA","ticket_count":1}].
+    expect(Object.isFrozen(entry)).toBe(true);
+    expect(Object.isFrozen(entry.candidate)).toBe(true);
     expect(Object.isFrozen(entry.candidate.columns)).toBe(true);
     expect(Object.isFrozen(entry.candidate.rows)).toBe(true);
     expect(Object.isFrozen(entry.candidate.rows[0])).toBe(true);
