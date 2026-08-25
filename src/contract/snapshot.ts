@@ -14,8 +14,13 @@ export function snapshotRecord(value: unknown): Record<string, unknown> | null {
   // the snapshot's prototype chain instead of copying the key. The key is
   // also rejected outright — no rule ever declares it, so it can only be an
   // attempt to reach that setter.
+  const names = Object.getOwnPropertyNames(value);
+  // No valid record comes close: the candidate has 9 keys and a row has the
+  // declared columns plus group_size. The cap keeps every later per-key loop
+  // bounded regardless of what a hostile caller piles onto one object.
+  if (names.length > MAX_SNAPSHOT_RECORD_KEYS) return null;
   const out: Record<string, unknown> = Object.create(null);
-  for (const key of Object.getOwnPropertyNames(value)) {
+  for (const key of names) {
     if (key === "__proto__") return null;
     const descriptor = Object.getOwnPropertyDescriptor(value, key);
     if (descriptor === undefined || !("value" in descriptor) || !descriptor.enumerable) return null;
@@ -24,6 +29,7 @@ export function snapshotRecord(value: unknown): Record<string, unknown> | null {
   return out;
 }
 
+const MAX_SNAPSHOT_RECORD_KEYS = 64;
 const MAX_SNAPSHOT_ARRAY_LENGTH = 10_000;
 
 export function snapshotArray(value: unknown): unknown[] | null {

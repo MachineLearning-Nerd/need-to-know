@@ -92,7 +92,11 @@ export function validateRelease(candidate: unknown): ValidationResult {
       planColumns.size !== declaredColumns.size ||
       [...declaredColumns].some((column) => !planColumns.has(column))
     ) {
-      findings.push({ code: "columns_plan_mismatch", detail: parsed.columns.join(",") });
+      const shown = parsed.columns.slice(0, 8).join(",");
+      findings.push({
+        code: "columns_plan_mismatch",
+        detail: parsed.columns.length > 8 ? `${shown},…` : shown,
+      });
     }
     findings.push(
       ...checkProvenance(

@@ -6,6 +6,7 @@ export type FindingCode =
   | "audience_not_authorized"
   // columns and rows
   | "no_columns"
+  | "too_many_columns"
   | "duplicate_column"
   | "column_not_allowlisted"
   | "no_rows"

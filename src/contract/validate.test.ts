@@ -91,6 +91,24 @@ describe("validateRelease", () => {
     }
   });
 
+  it("denies an oversized candidate with bounded findings instead of exhausting", () => {
+    const columns = Array.from({ length: 9_999 }, (_, i) => `col_${i}`);
+    const rows = Array.from({ length: 60 }, () => ({
+      week: "2026-W32",
+      region: "NA",
+      ticket_count: 12,
+      group_size: 12,
+    }));
+    const result = validateRelease(makeCandidate({ columns, rows }));
+    expect(result.status).toBe("denied");
+    if (result.status === "denied") {
+      const codes = result.findings.map((finding) => finding.code);
+      expect(codes).toContain("too_many_columns");
+      expect(codes).toContain("too_many_rows");
+      expect(result.findings.length).toBeLessThan(10);
+    }
+  });
+
   it("returns needs_review for malformed input instead of throwing", () => {
     for (const malformed of [null, 42, "release", {}, { purpose: "weekly support trend" }, []]) {
       const result = validateRelease(malformed);

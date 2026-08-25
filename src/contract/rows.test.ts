@@ -32,6 +32,11 @@ describe("checkColumns", () => {
       ]);
     }
   });
+
+  it("caps oversized column lists with one finding instead of one per column", () => {
+    const bogus = Array.from({ length: 10_000 }, (_, i) => `col_${i}`);
+    expect(checkColumns(bogus)).toEqual([{ code: "too_many_columns", detail: "10000" }]);
+  });
 });
 
 describe("checkRows", () => {
@@ -44,6 +49,14 @@ describe("checkRows", () => {
     expect(codes(checkRows([], COLUMNS))).toContain("no_rows");
     const many = Array.from({ length: MAX_RELEASE_ROWS + 1 }, () => goodRow);
     expect(codes(checkRows(many, COLUMNS))).toContain("too_many_rows");
+  });
+
+  it("skips per-row checks once a structural cap is exceeded", () => {
+    const bad = { ...goodRow, region: "DINESH", group_size: 1 };
+    const many = Array.from({ length: 10_000 }, () => bad);
+    expect(checkRows(many, COLUMNS)).toEqual([{ code: "too_many_rows", detail: "10000" }]);
+    const wide = Array.from({ length: 10_000 }, (_, i) => `col_${i}`);
+    expect(checkRows([bad], wide)).toEqual([]);
   });
 
   it("rejects undeclared and missing row fields", () => {

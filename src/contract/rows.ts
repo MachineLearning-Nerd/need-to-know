@@ -49,6 +49,13 @@ const COLUMN_DOMAINS: Readonly<Record<AllowedReleaseColumn, (value: unknown) => 
 export function checkColumns(columns: readonly string[]): Finding[] {
   const findings: Finding[] = [];
   if (columns.length === 0) findings.push({ code: "no_columns" });
+  if (columns.length > ALLOWED_RELEASE_COLUMNS.length) {
+    // Cap before per-column checks: no valid candidate exceeds the allowlist
+    // length, and emitting one finding per bogus column would let a huge
+    // column list exhaust the validator instead of being judged by it.
+    findings.push({ code: "too_many_columns", detail: String(columns.length) });
+    return findings;
+  }
   if (new Set(columns).size !== columns.length) findings.push({ code: "duplicate_column" });
   for (const column of columns) {
     if (!(ALLOWED_RELEASE_COLUMNS as readonly string[]).includes(column)) {
@@ -66,6 +73,12 @@ export function checkRows(
   if (rows.length === 0) findings.push({ code: "no_rows" });
   if (rows.length > MAX_RELEASE_ROWS) {
     findings.push({ code: "too_many_rows", detail: String(rows.length) });
+  }
+  // Skip element-wise checks past the structural caps: an oversized candidate
+  // is already denied, and iterating 10k rows against 10k columns would
+  // manufacture ~100M findings — exhausting the validator is not fail-closed.
+  if (rows.length > MAX_RELEASE_ROWS || columns.length > ALLOWED_RELEASE_COLUMNS.length) {
+    return findings;
   }
   const declared = new Set([...columns, GROUP_SIZE_FIELD]);
   rows.forEach((row, index) => {

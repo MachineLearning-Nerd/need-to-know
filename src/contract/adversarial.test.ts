@@ -211,6 +211,14 @@ describe("hostile object shapes fail closed", () => {
     }
   });
 
+  it("rejects records bloated past the snapshot key cap", () => {
+    const bloated: Record<string, unknown> = { ...makeCandidate().rows[0] };
+    for (let index = 0; index < 100; index++) bloated[`k${index}`] = index;
+    expect(validateRelease(makeCandidate({ rows: [bloated as never] })).status).toBe(
+      "needs_review",
+    );
+  });
+
   it("rejects rows with a non-plain prototype outright", () => {
     const inherited = Object.assign(Object.create({ week: "2026-W32" }), {
       region: "NA",
