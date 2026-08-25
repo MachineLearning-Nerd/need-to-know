@@ -5,6 +5,12 @@ import { POLICY_VERSION } from "./policy.js";
 export const ALLOWED_SOURCE_DATASET = "support";
 export const ALLOWED_METRICS = Object.freeze(["ticket_count", "avg_resolution_hours"] as const);
 
+// Every other caller string is compared against an exact literal or a closed
+// domain before anything is hashed; queryId is vault-issued, so it gets a
+// shape bound too — otherwise it is the one unconstrained string that could
+// ride an approved candidate into canonical serialization and SHA-256.
+export const QUERY_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+
 export type QueryPlan = {
   readonly sourceDataset: string;
   readonly dimensions: readonly string[];
@@ -82,6 +88,9 @@ export function checkProvenance(
   }
   if (policyVersion !== POLICY_VERSION) {
     findings.push({ code: "policy_version_mismatch", detail: clipDetail(policyVersion) });
+  }
+  if (!QUERY_ID_PATTERN.test(provenance.queryId)) {
+    findings.push({ code: "value_out_of_domain", detail: "provenance.queryId" });
   }
   return findings;
 }

@@ -69,6 +69,21 @@ describe("checkProvenance", () => {
     expect(checkProvenance(goodProvenance, goodPlan, DATASET_VERSION, POLICY_VERSION)).toEqual([]);
   });
 
+  it("bounds queryId so no unconstrained string reaches the hashed contract", () => {
+    for (const queryId of [`q-${"x".repeat(1_000_000)}`, "", "query 1", "query/../1"]) {
+      expect(
+        codes(
+          checkProvenance(
+            { ...goodProvenance, queryId },
+            goodPlan,
+            DATASET_VERSION,
+            POLICY_VERSION,
+          ),
+        ),
+      ).toContain("value_out_of_domain");
+    }
+  });
+
   it("rejects source, dataset-version, and policy-version mismatches", () => {
     expect(
       codes(
