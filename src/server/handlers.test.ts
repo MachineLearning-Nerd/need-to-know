@@ -198,3 +198,115 @@ describe("prepare_analysis", () => {
     expect(text).not.toContain("@");
   });
 });
+
+function prepareValidated(): { queryId: string; contractHash: string; outputHash: string } {
+  const prepared = payload(
+    handlers.prepareAnalysis({
+      ...goodMission,
+      dimensions: ["week", "region"],
+      metric: "ticket_count",
+    }),
+  ) as unknown as { queryId: string };
+  const verdict = payload(handlers.validateRelease({ queryId: prepared.queryId })) as unknown as {
+    status: string;
+    contractHash: string;
+    outputHash: string;
+  };
+  expect(verdict.status).toBe("approved");
+  return { queryId: prepared.queryId, ...verdict };
+}
+
+describe("release_result", () => {
+  it("releases once with a receipt, then denies replay with a single audit trail", () => {
+    const { queryId, contractHash, outputHash } = prepareValidated();
+    const released = payload(
+      handlers.releaseResult({ queryId, contractHash, outputHash }),
+    ) as unknown as {
+      receipt: { receiptId: string; contractHash: string; outputHash: string };
+      rows: Array<Record<string, unknown>>;
+    };
+    expect(released.receipt.receiptId).toMatch(/^r-\d+$/);
+    expect(released.receipt.contractHash).toBe(contractHash);
+    for (const row of released.rows) {
+      expect(row.group_size).toBeUndefined();
+    }
+    expect(store.getReceipt(queryId)?.receiptId).toBe(released.receipt.receiptId);
+
+    const replay = handlers.releaseResult({ queryId, contractHash, outputHash });
+    expect(replay.isError).toBe(true);
+    expect(store.getReceipt(queryId)?.receiptId).toBe(released.receipt.receiptId);
+    const outcomes = store
+      .audits()
+      .filter((audit) => audit.queryId === queryId)
+      .map((audit) => audit.outcome);
+    expect(outcomes).toEqual(["released", "already_released"]);
+  });
+
+  it("denies tampered hashes with an audit record and zero release writes", () => {
+    const { queryId, contractHash } = prepareValidated();
+    const wrongOutput = "0".repeat(64);
+    const result = handlers.releaseResult({ queryId, contractHash, outputHash: wrongOutput });
+    expect(result.isError).toBe(true);
+    const denial = payload(result) as unknown as { findings: Array<{ code: string }> };
+    expect(denial.findings.map((finding) => finding.code)).toContain("output_hash_mismatch");
+    expect(store.getReceipt(queryId)).toBeUndefined();
+    expect(store.audits().at(-1)?.outcome).toBe("denied");
+  });
+
+  it("audits unknown query ids without any release write", () => {
+    const result = handlers.releaseResult({
+      queryId: "q-999999",
+      contractHash: "0".repeat(64),
+      outputHash: "0".repeat(64),
+    });
+    expect(result.isError).toBe(true);
+    expect(store.audits().at(-1)?.outcome).toBe("unknown_query_id");
+  });
+
+  it("catches fabricated group-size evidence the contract cannot see", () => {
+    // The size-2 cell claimed as group_size 3 passes every contract rule —
+    // only the vault recomputing its own aggregation can expose the lie.
+    const smuggled = store.savePrepared(
+      {
+        purpose: goodMission.purpose,
+        audience: goodMission.audience,
+        columns: ["week", "region", "ticket_count"],
+        rows: [
+          {
+            week: SMALL_CELL.week,
+            region: SMALL_CELL.region,
+            ticket_count: SMALL_CELL.size,
+            group_size: 3,
+          },
+        ],
+        minGroupSize: 3,
+        datasetVersion: "support-tickets-v1",
+        policyVersion: "policy-v1",
+        queryPlan: {
+          sourceDataset: "support",
+          dimensions: ["week", "region"],
+          metric: "ticket_count",
+          filters: [],
+          joins: [],
+        },
+      },
+      0,
+    );
+    const verdict = payload(handlers.validateRelease({ queryId: smuggled.queryId })) as unknown as {
+      status: string;
+      contractHash: string;
+      outputHash: string;
+    };
+    expect(verdict.status).toBe("approved");
+
+    const result = handlers.releaseResult({
+      queryId: smuggled.queryId,
+      contractHash: verdict.contractHash,
+      outputHash: verdict.outputHash,
+    });
+    expect(result.isError).toBe(true);
+    expect(payload(result).detail).toBe("evidence_mismatch");
+    expect(store.getReceipt(smuggled.queryId)).toBeUndefined();
+    expect(store.audits().at(-1)?.findings).toContainEqual({ code: "evidence_mismatch" });
+  });
+});

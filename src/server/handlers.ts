@@ -1,3 +1,4 @@
+import { canonicalize } from "../contract/canonical.js";
 import {
   ALLOWED_AUDIENCE,
   ALLOWED_PURPOSE,
@@ -6,13 +7,35 @@ import {
 } from "../contract/policy.js";
 import { ALLOWED_METRICS } from "../contract/queryPlan.js";
 import { GROUP_SIZE_FIELD, MAX_RELEASE_ROWS, MIN_GROUP_SIZE } from "../contract/rows.js";
-import { validateRelease } from "../contract/validate.js";
+import { validateRelease, verifyRelease } from "../contract/validate.js";
 import type { AggregateMetric, VaultDatabase } from "../vault/database.js";
 import { COLUMN_SENSITIVITY, DATASET_VERSION, SAFE_DIMENSIONS } from "../vault/schema.js";
 import { errorResult, jsonResult, type ToolResult, type VaultToolHandlers } from "./mcp.js";
 import type { VaultStore } from "./store.js";
 
 const notImplemented = (): ToolResult => errorResult("not_implemented");
+
+// prepare_analysis and release_result must build rows identically: release
+// recomputes this from the live database and any difference from the stored
+// candidate — regrouped cells, drifted values, smuggled rows — is denied.
+function aggregateCandidateRows(
+  db: VaultDatabase,
+  dimensions: readonly string[],
+  metric: AggregateMetric,
+): { rows: ReadonlyArray<Record<string, string | number>>; suppressedCells: number } {
+  const cells = db.aggregate(dimensions, metric);
+  const releasable = cells.filter((cell) => cell.groupSize >= MIN_GROUP_SIZE);
+  return {
+    rows: releasable.map((cell) =>
+      Object.freeze({
+        ...cell.dimensions,
+        [metric]: cell.value,
+        [GROUP_SIZE_FIELD]: cell.groupSize,
+      }),
+    ),
+    suppressedCells: cells.length - releasable.length,
+  };
+}
 
 export function createVaultHandlers(db: VaultDatabase, store: VaultStore): VaultToolHandlers {
   return {
@@ -56,24 +79,20 @@ export function createVaultHandlers(db: VaultDatabase, store: VaultStore): Vault
         return errorResult("metric_not_allowed", input.metric.slice(0, 120));
       }
 
-      const cells = db.aggregate(dimensions, input.metric as AggregateMetric);
       // Suppression happens inside the vault: a small cell never appears in
       // any candidate, so no downstream mistake can release it.
-      const releasable = cells.filter((cell) => cell.groupSize >= MIN_GROUP_SIZE);
-      const suppressedCells = cells.length - releasable.length;
+      const { rows, suppressedCells } = aggregateCandidateRows(
+        db,
+        dimensions,
+        input.metric as AggregateMetric,
+      );
 
       const entry = store.savePrepared(
         {
           purpose: input.purpose,
           audience: input.audience,
           columns: [...dimensions, input.metric],
-          rows: releasable.map((cell) =>
-            Object.freeze({
-              ...cell.dimensions,
-              [input.metric]: cell.value,
-              [GROUP_SIZE_FIELD]: cell.groupSize,
-            }),
-          ),
+          rows,
           minGroupSize: MIN_GROUP_SIZE,
           datasetVersion: DATASET_VERSION,
           policyVersion: POLICY_VERSION,
@@ -96,7 +115,68 @@ export function createVaultHandlers(db: VaultDatabase, store: VaultStore): Vault
       if (entry === undefined) return errorResult("unknown_query_id");
       return jsonResult({ queryId: entry.queryId, ...validateRelease(entry.candidate) });
     },
-    releaseResult: notImplemented,
+    releaseResult: (input) => {
+      const entry = store.getPrepared(input.queryId);
+      if (entry === undefined) {
+        store.recordAudit(input.queryId, "unknown_query_id");
+        return errorResult("unknown_query_id");
+      }
+      if (store.getReceipt(input.queryId) !== undefined) {
+        store.recordAudit(input.queryId, "already_released");
+        return errorResult("already_released");
+      }
+
+      const verdict = verifyRelease(entry.candidate, input.contractHash, input.outputHash);
+      if (verdict.status !== "approved") {
+        store.recordAudit(input.queryId, verdict.status, verdict.findings);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                error: "release_denied",
+                status: verdict.status,
+                findings: verdict.findings,
+              }),
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      // Execution-time evidence revalidation: the stored candidate must match
+      // what the vault can reproduce from its own data right now. A candidate
+      // that lies about group sizes passes every contract rule — only the data
+      // owner recomputing its own aggregation can catch it.
+      const recomputed = aggregateCandidateRows(
+        db,
+        entry.candidate.queryPlan.dimensions,
+        entry.candidate.queryPlan.metric as AggregateMetric,
+      );
+      if (canonicalize(recomputed.rows) !== canonicalize(entry.candidate.rows)) {
+        store.recordAudit(input.queryId, "denied", [{ code: "evidence_mismatch" }]);
+        return errorResult("release_denied", "evidence_mismatch");
+      }
+
+      const receipt = store.saveReceipt({
+        queryId: input.queryId,
+        contractHash: verdict.contractHash,
+        outputHash: verdict.outputHash,
+        datasetVersion: entry.candidate.datasetVersion,
+        policyVersion: entry.candidate.policyVersion,
+      });
+      store.recordAudit(input.queryId, "released");
+
+      const releasedRows = entry.candidate.rows.map((row) => {
+        const projected: Record<string, string | number> = {};
+        for (const column of entry.candidate.columns) {
+          const value = row[column];
+          if (value !== undefined) projected[column] = value;
+        }
+        return projected;
+      });
+      return jsonResult({ receipt, columns: entry.candidate.columns, rows: releasedRows });
+    },
     renderSafeChart: notImplemented,
   };
 }
