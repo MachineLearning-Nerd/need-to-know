@@ -22,7 +22,7 @@ export type VaultDatabase = {
   rowCount(): number;
   hasCanaryRow(): boolean;
   groupSize(week: string, region: string): number;
-  aggregate(dimensions: readonly string[], metric: AggregateMetric): AggregateCell[];
+  aggregate(metric: AggregateMetric): AggregateCell[];
   close(): void;
 };
 
@@ -76,39 +76,31 @@ export function openVaultDatabase(): VaultDatabase {
     );
     const toCount = (row: Record<string, unknown> | undefined): number => Number(row?.n ?? 0);
 
-    // The identifier space is closed (subsets of SAFE_DIMENSIONS x two
-    // metrics), so caching prepared statements per shape is bounded and keeps
-    // the prepare-once rule: Node 24 has no StatementSync.close().
-    const aggregateStatements = new Map<string, StatementSync>();
-    const aggregate = (dimensions: readonly string[], metric: AggregateMetric): AggregateCell[] => {
-      for (const dimension of dimensions) {
-        if (!(SAFE_DIMENSIONS as readonly string[]).includes(dimension)) {
-          throw new Error(`dimension not allowlisted: ${dimension}`);
-        }
-      }
-      if (new Set(dimensions).size !== dimensions.length) {
-        throw new Error("duplicate dimension");
-      }
-      if (!Object.hasOwn(METRIC_SQL, metric)) {
-        throw new Error(`metric not allowlisted: ${metric}`);
-      }
-      const key = `${dimensions.join(",")}|${metric}`;
-      let statement = aggregateStatements.get(key);
-      if (statement === undefined) {
-        const dimensionList = dimensions.join(", ");
-        const grouping =
-          dimensions.length > 0 ? ` GROUP BY ${dimensionList} ORDER BY ${dimensionList}` : "";
-        const select =
-          dimensions.length > 0
-            ? `${dimensionList}, ${METRIC_SQL[metric]} AS metric_value, COUNT(*) AS group_size`
-            : `${METRIC_SQL[metric]} AS metric_value, COUNT(*) AS group_size`;
-        statement = db.prepare(`SELECT ${select} FROM tickets${grouping}`);
-        aggregateStatements.set(key, statement);
-      }
+    // Always the finest granularity, never a caller-chosen one: coarser views
+    // are rolled up from these cells after suppression, and grouping here at a
+    // coarser level would hand out totals that still contain withheld rows.
+    // Two statements, both prepared once — Node 24 has no StatementSync.close().
+    const dimensionList = SAFE_DIMENSIONS.join(", ");
+    const aggregateStatements = new Map<AggregateMetric, StatementSync>();
+    for (const [metric, expression] of Object.entries(METRIC_SQL) as Array<
+      [AggregateMetric, string]
+    >) {
+      aggregateStatements.set(
+        metric,
+        db.prepare(
+          `SELECT ${dimensionList}, ${expression} AS metric_value, COUNT(*) AS group_size
+             FROM tickets GROUP BY ${dimensionList} ORDER BY ${dimensionList}`,
+        ),
+      );
+    }
+
+    const aggregate = (metric: AggregateMetric): AggregateCell[] => {
+      const statement = aggregateStatements.get(metric);
+      if (statement === undefined) throw new Error("metric not allowlisted");
       return statement.all().map((row) => {
         const cell = row as Record<string, unknown>;
         const dims: Record<string, string> = {};
-        for (const dimension of dimensions) dims[dimension] = String(cell[dimension]);
+        for (const dimension of SAFE_DIMENSIONS) dims[dimension] = String(cell[dimension]);
         return Object.freeze({
           dimensions: Object.freeze(dims),
           value: Number(cell.metric_value),

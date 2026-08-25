@@ -18,7 +18,8 @@ export type AuditOutcome =
   | "unknown_query_id"
   | "already_released"
   | "not_released"
-  | "dimension_not_allowed";
+  | "dimension_not_allowed"
+  | "mission_not_authorized";
 
 export type AuditRecord = Readonly<{
   seq: number;

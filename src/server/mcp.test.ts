@@ -158,7 +158,23 @@ describe("vault MCP scaffold", () => {
       headers: { "content-type": "application/json", origin: `http://localhost:${server.port}` },
       body: "{}",
     });
+    // A loopback Origin must get past our guard and reach the SDK, which
+    // answers on its own terms (406 here — a bare fetch sends no MCP Accept
+    // header). Asserting the body pins "not blocked by us" precisely; a bare
+    // status check would also pass on an unrelated 500.
     expect(sameOrigin.status).not.toBe(403);
+    expect(await sameOrigin.text()).not.toContain("forbidden_origin");
+  });
+
+  it("refuses GET so no caller can pin an open stream", async () => {
+    const response = await fetch(`http://localhost:${server.port}/mcp`, { method: "GET" });
+    expect(response.status).toBe(405);
+    expect(response.headers.get("allow")).toBe("POST");
+    await response.text();
+    // The server must still shut down promptly with no stream held open.
+    const idle = await startVaultMcpServer(0, stubHandlers);
+    await fetch(`http://localhost:${idle.port}/mcp`, { method: "GET" }).then((r) => r.text());
+    await idle.close();
   });
 
   it("refuses oversized bodies before buffering them", async () => {

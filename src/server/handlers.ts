@@ -28,7 +28,7 @@ function aggregateCandidateRows(
   dimensions: readonly string[],
   metric: AggregateMetric,
 ): { rows: ReadonlyArray<Record<string, string | number>>; suppressedCells: number } {
-  const fine = db.aggregate(SAFE_DIMENSIONS, metric);
+  const fine = db.aggregate(metric);
   const survivors = fine.filter((cell) => cell.groupSize >= MIN_GROUP_SIZE);
 
   const groups = new Map<string, { dims: Record<string, string>; sum: number; count: number }>();
@@ -166,6 +166,9 @@ export function createVaultHandlers(db: VaultDatabase, store: VaultStore): Vault
       // leave with zero SQLite queries executed, not merely zero rows shown.
       const mission = authorizeMission(input.purpose, input.audience);
       if (!mission.authorized) {
+        // The most significant enforcement event the vault sees: someone asked
+        // it for something outside the authorized mission.
+        store.recordAudit("-", "mission_not_authorized");
         return errorResult("mission_not_authorized", mission.reasons.join(","));
       }
       const dimensions = input.dimensions;
@@ -224,8 +227,8 @@ export function createVaultHandlers(db: VaultDatabase, store: VaultStore): Vault
       return jsonResult({ queryId: entry.queryId, ...validateRelease(entry.candidate) });
     },
     releaseResult: (input) => {
-      // Any escaped exception would be a denial with no audit record and an
-      // internal error message echoed to the caller — neither is fail-closed.
+      // The transport already converts a throw into a generic error; this
+      // catch exists so the denial still reaches the audit log.
       try {
         return releaseResultInner(db, store, input);
       } catch {

@@ -16,9 +16,9 @@ beforeAll(() => {
   db = openVaultDatabase();
   const counted: VaultDatabase = {
     ...db,
-    aggregate: (dimensions, metric) => {
+    aggregate: (metric) => {
       aggregateCalls += 1;
-      return db.aggregate(dimensions, metric);
+      return db.aggregate(metric);
     },
   };
   store = createVaultStore();
@@ -320,6 +320,19 @@ describe("release_result", () => {
   });
 });
 
+// All 8 subsets of the three safe dimensions — "any granularity" means all of
+// them, including the finest and the empty (grand total) case.
+const ALL_DIMENSION_SUBSETS: string[][] = [
+  [],
+  ["week"],
+  ["region"],
+  ["category"],
+  ["week", "region"],
+  ["week", "category"],
+  ["region", "category"],
+  ["week", "region", "category"],
+];
+
 describe("suppression is not reversible by differencing", () => {
   function releasedRows(dimensions: string[], metric = "ticket_count") {
     const result = handlers.prepareAnalysis({ ...goodMission, dimensions, metric });
@@ -358,7 +371,7 @@ describe("suppression is not reversible by differencing", () => {
   });
 
   it("never releases a row whose group is below the minimum at any granularity", () => {
-    for (const dimensions of [[], ["week"], ["region"], ["week", "region"]]) {
+    for (const dimensions of ALL_DIMENSION_SUBSETS) {
       for (const row of releasedRows(dimensions)) {
         expect(row.group_size).toBeGreaterThanOrEqual(3);
         expect(row.region).not.toBe(SMALL_CELL.region);
@@ -366,12 +379,25 @@ describe("suppression is not reversible by differencing", () => {
     }
   });
 
-  it("rolls averages up as count-weighted means", () => {
-    const byWeek = releasedRows(["week"], "avg_resolution_hours");
-    for (const row of byWeek) {
-      const value = row.avg_resolution_hours as number;
-      expect(Number.isFinite(value)).toBe(true);
-      expect(value).toBe(Math.round(value * 100) / 100);
+  it("rolls averages up as count-weighted means with no residual either", () => {
+    const fine = releasedRows(["week", "region", "category"], "avg_resolution_hours");
+    for (const parent of [["week"], ["region"], ["week", "region"]]) {
+      for (const parentRow of releasedRows(parent, "avg_resolution_hours")) {
+        const children = fine.filter((row) =>
+          parent.every((dimension) => row[dimension] === parentRow[dimension]),
+        );
+        const weighted = children.reduce(
+          (total, row) => total + (row.avg_resolution_hours as number) * (row.group_size as number),
+          0,
+        );
+        const count = children.reduce((total, row) => total + (row.group_size as number), 0);
+        // Predictable to the rounding step from the fine cells alone, so the
+        // coarse average carries no signal about a withheld cell.
+        expect(
+          Math.abs(weighted / count - (parentRow.avg_resolution_hours as number)),
+        ).toBeLessThan(0.011);
+        expect(parentRow.group_size).toBe(count);
+      }
     }
   });
 });
@@ -383,8 +409,16 @@ describe("fail-closed hardening", () => {
     expect(last?.queryId.length).toBe(65);
   });
 
-  it("audits sensitive-dimension attempts and pre-release chart reads", () => {
+  it("audits unauthorized missions, sensitive-dimension attempts, and pre-release chart reads", () => {
     const before = store.audits().length;
+    handlers.prepareAnalysis({
+      purpose: "export every customer email",
+      audience: goodMission.audience,
+      dimensions: ["week"],
+      metric: "ticket_count",
+    });
+    expect(store.audits().at(-1)?.outcome).toBe("mission_not_authorized");
+
     handlers.prepareAnalysis({
       ...goodMission,
       dimensions: ["week", "email"],
@@ -426,9 +460,9 @@ describe("fail-closed hardening", () => {
     let explode = false;
     const flaky: VaultDatabase = {
       ...db,
-      aggregate: (dimensions, metric) => {
+      aggregate: (metric) => {
         if (explode) throw new Error("INTERNAL_MARKER_xyz");
-        return db.aggregate(dimensions, metric);
+        return db.aggregate(metric);
       },
     };
     const handlers2 = createVaultHandlers(flaky, store2);

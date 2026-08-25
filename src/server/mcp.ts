@@ -171,6 +171,14 @@ export function startVaultMcpServer(
       response.end(JSON.stringify({ error: "payload_too_large" }));
       return;
     }
+    // The vault only answers tool calls; it never pushes server-initiated
+    // messages, so the standalone GET SSE stream has no purpose and would pin
+    // an McpServer and its socket for as long as a caller cares to hold it.
+    if (request.method !== "POST") {
+      response.writeHead(405, { "content-type": "application/json", allow: "POST" });
+      response.end(JSON.stringify({ error: "method_not_allowed" }));
+      return;
+    }
     const server = buildMcpServer(handlers);
     // No sessionIdGenerator: stateless mode — all durable state lives in the
     // vault store, so there is no MCP session for a stale transport to leak.
