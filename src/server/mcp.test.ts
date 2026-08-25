@@ -1,3 +1,5 @@
+import { request as httpRequest } from "node:http";
+
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
@@ -71,6 +73,43 @@ describe("vault MCP scaffold", () => {
   it("rejects paths other than /mcp", async () => {
     const response = await fetch(`http://localhost:${server.port}/tickets`);
     expect(response.status).toBe(404);
+  });
+
+  it("refuses non-loopback Host and Origin headers against DNS rebinding", async () => {
+    // fetch strips Host overrides (forbidden header), so the rebound request
+    // goes through node:http, which sends exactly what it is told.
+    const reboundStatus = await new Promise<number>((resolve, reject) => {
+      const request = httpRequest(
+        {
+          host: "localhost",
+          port: server.port,
+          path: "/mcp",
+          method: "POST",
+          headers: { "content-type": "application/json", host: "evil.example:8788" },
+        },
+        (response) => {
+          response.resume();
+          resolve(response.statusCode ?? 0);
+        },
+      );
+      request.on("error", reject);
+      request.end("{}");
+    });
+    expect(reboundStatus).toBe(403);
+
+    const crossOrigin = await fetch(`http://localhost:${server.port}/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: "http://evil.example" },
+      body: "{}",
+    });
+    expect(crossOrigin.status).toBe(403);
+
+    const sameOrigin = await fetch(`http://localhost:${server.port}/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: `http://localhost:${server.port}` },
+      body: "{}",
+    });
+    expect(sameOrigin.status).not.toBe(403);
   });
 
   it("refuses oversized bodies before buffering them", async () => {

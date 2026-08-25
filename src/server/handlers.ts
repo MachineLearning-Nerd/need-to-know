@@ -35,6 +35,24 @@ function aggregateCandidateRows(
   };
 }
 
+// The projection decides which fields leave the vault (group_size never
+// does), so release and chart must share one copy. The contract library's
+// outputHashOf applies the same rule independently on purpose: the hash
+// definition must not depend on server code.
+function projectReleasedRows(candidate: {
+  readonly columns: readonly string[];
+  readonly rows: ReadonlyArray<Readonly<Record<string, string | number>>>;
+}): Array<Record<string, string | number>> {
+  return candidate.rows.map((row) => {
+    const projected: Record<string, string | number> = {};
+    for (const column of candidate.columns) {
+      const value = row[column];
+      if (value !== undefined) projected[column] = value;
+    }
+    return projected;
+  });
+}
+
 function releaseResultInner(
   db: VaultDatabase,
   store: VaultStore,
@@ -93,15 +111,11 @@ function releaseResultInner(
   });
   store.recordAudit(input.queryId, "released");
 
-  const releasedRows = entry.candidate.rows.map((row) => {
-    const projected: Record<string, string | number> = {};
-    for (const column of entry.candidate.columns) {
-      const value = row[column];
-      if (value !== undefined) projected[column] = value;
-    }
-    return projected;
+  return jsonResult({
+    receipt,
+    columns: entry.candidate.columns,
+    rows: projectReleasedRows(entry.candidate),
   });
-  return jsonResult({ receipt, columns: entry.candidate.columns, rows: releasedRows });
 }
 
 export function createVaultHandlers(db: VaultDatabase, store: VaultStore): VaultToolHandlers {
@@ -200,14 +214,6 @@ export function createVaultHandlers(db: VaultDatabase, store: VaultStore): Vault
       const receipt = store.getReceipt(input.queryId);
       if (receipt === undefined) return errorResult("not_released");
       const { candidate } = entry;
-      const rows = candidate.rows.map((row) => {
-        const projected: Record<string, string | number> = {};
-        for (const column of candidate.columns) {
-          const value = row[column];
-          if (value !== undefined) projected[column] = value;
-        }
-        return projected;
-      });
       return jsonResult({
         queryId: entry.queryId,
         receiptId: receipt.receiptId,
@@ -215,7 +221,7 @@ export function createVaultHandlers(db: VaultDatabase, store: VaultStore): Vault
         dimensions: candidate.queryPlan.dimensions,
         metric: candidate.queryPlan.metric,
         columns: candidate.columns,
-        rows,
+        rows: projectReleasedRows(candidate),
       });
     },
   };

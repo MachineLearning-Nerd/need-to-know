@@ -115,6 +115,9 @@ export type RunningVaultServer = {
 // and a queryId), tight enough that a hostile body cannot balloon memory.
 const MAX_REQUEST_BODY_BYTES = 1_048_576;
 
+const LOOPBACK_HOST = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
+const LOOPBACK_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/;
+
 // Stateless transport, fresh server per request: tool calls are independent
 // and all durable state lives in the vault store, so there is no MCP session
 // to manage and nothing for a stale session to leak.
@@ -126,6 +129,18 @@ export function startVaultMcpServer(
     if (request.url !== "/mcp") {
       response.writeHead(404, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: "not_found" }));
+      return;
+    }
+    // Loopback binding does not stop DNS rebinding: a page on evil.com whose
+    // DNS now points at loopback sends same-origin requests straight here.
+    // Host must be a loopback name and any Origin present must be one too —
+    // non-browser clients send no Origin and pass. (MCP Streamable HTTP
+    // requires Origin validation.)
+    const host = request.headers.host ?? "";
+    const origin = request.headers.origin;
+    if (!LOOPBACK_HOST.test(host) || (origin !== undefined && !LOOPBACK_ORIGIN.test(origin))) {
+      response.writeHead(403, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "forbidden_origin" }));
       return;
     }
     // SDK 1.30 reads the body with no size cap (the old 4 MB guard is gone),

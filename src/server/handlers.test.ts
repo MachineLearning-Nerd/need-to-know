@@ -318,6 +318,15 @@ describe("fail-closed hardening", () => {
     expect(last?.queryId.length).toBe(65);
   });
 
+  it("stores frozen copies of findings, immune to mutation of the originals", () => {
+    const original = { code: "evidence_mismatch" as const };
+    store.recordAudit("q-frozen", "denied", [original]);
+    const recorded = store.audits().at(-1)?.findings[0];
+    expect(Object.isFrozen(recorded)).toBe(true);
+    (original as { code: string }).code = "released_ok";
+    expect(recorded?.code).toBe("evidence_mismatch");
+  });
+
   it("audits a thrown release error and never echoes internals", () => {
     const store2 = createVaultStore();
     let explode = false;

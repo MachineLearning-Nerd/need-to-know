@@ -94,7 +94,9 @@ export function createVaultStore(): VaultStore {
         // the enforcement record without bound.
         queryId: queryId.length > 64 ? `${queryId.slice(0, 64)}…` : queryId,
         outcome,
-        findings: Object.freeze([...findings]),
+        // Frozen copies of each finding, not references: the audit trail must
+        // stay immutable even against in-process mutation of the originals.
+        findings: Object.freeze(findings.map((finding) => Object.freeze({ ...finding }))),
       });
       auditLog.push(record);
       return record;
