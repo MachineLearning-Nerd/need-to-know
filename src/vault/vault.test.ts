@@ -113,7 +113,15 @@ describe("vault database", () => {
 
   it("exposes no raw-row accessor and no parameterized sensitive-column probe", () => {
     const db = openVaultDatabase();
-    expect(Object.keys(db).sort()).toEqual(["close", "groupSize", "hasCanaryRow", "rowCount"]);
+    // aggregate is allowlisted-identifier-only and returns grouped counts and
+    // averages, never rows — the only deliberate surface growth for phase 3.
+    expect(Object.keys(db).sort()).toEqual([
+      "aggregate",
+      "close",
+      "groupSize",
+      "hasCanaryRow",
+      "rowCount",
+    ]);
     db.close();
     // Module-level lock: adding any new export (e.g. a row dump) fails here too.
     expect(Object.keys(vaultDatabase).sort()).toEqual(["openVaultDatabase"]);

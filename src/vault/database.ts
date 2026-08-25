@@ -1,17 +1,35 @@
-import { DatabaseSync } from "node:sqlite";
+import { DatabaseSync, type StatementSync } from "node:sqlite";
 
-import { TICKETS_DDL } from "./schema.js";
+import { SAFE_DIMENSIONS, TICKETS_DDL } from "./schema.js";
 import { CANARY, seedRows } from "./seed.js";
+
+export type AggregateMetric = "ticket_count" | "avg_resolution_hours";
+
+export type AggregateCell = Readonly<{
+  dimensions: Readonly<Record<string, string>>;
+  value: number;
+  groupSize: number;
+}>;
 
 // The DatabaseSync handle stays inside this closure and no exported query takes
 // a caller-chosen probe against a sensitive column — a parameterized substring
 // or equality check would be a boolean oracle that leaks row contents bit by bit.
+// aggregate() takes no caller values at all: only identifiers checked against
+// the frozen allowlists below ever reach the SQL text.
 export type VaultDatabase = {
   rowCount(): number;
   hasCanaryRow(): boolean;
   groupSize(week: string, region: string): number;
+  aggregate(dimensions: readonly string[], metric: AggregateMetric): AggregateCell[];
   close(): void;
 };
+
+// ROUND keeps averages presentable and deterministic; COUNT doubles as the
+// per-cell group size the suppression and contract rules run on.
+const METRIC_SQL = Object.freeze({
+  ticket_count: "COUNT(*)",
+  avg_resolution_hours: "ROUND(AVG(resolution_hours), 2)",
+} as const satisfies Record<AggregateMetric, string>);
 
 export function openVaultDatabase(): VaultDatabase {
   const db = new DatabaseSync(":memory:");
@@ -56,10 +74,52 @@ export function openVaultDatabase(): VaultDatabase {
     );
     const toCount = (row: Record<string, unknown> | undefined): number => Number(row?.n ?? 0);
 
+    // The identifier space is closed (subsets of SAFE_DIMENSIONS x two
+    // metrics), so caching prepared statements per shape is bounded and keeps
+    // the prepare-once rule: Node 24 has no StatementSync.close().
+    const aggregateStatements = new Map<string, StatementSync>();
+    const aggregate = (dimensions: readonly string[], metric: AggregateMetric): AggregateCell[] => {
+      for (const dimension of dimensions) {
+        if (!(SAFE_DIMENSIONS as readonly string[]).includes(dimension)) {
+          throw new Error(`dimension not allowlisted: ${dimension}`);
+        }
+      }
+      if (new Set(dimensions).size !== dimensions.length) {
+        throw new Error("duplicate dimension");
+      }
+      if (!Object.hasOwn(METRIC_SQL, metric)) {
+        throw new Error(`metric not allowlisted: ${metric}`);
+      }
+      const key = `${dimensions.join(",")}|${metric}`;
+      let statement = aggregateStatements.get(key);
+      if (statement === undefined) {
+        const dimensionList = dimensions.join(", ");
+        const grouping =
+          dimensions.length > 0 ? ` GROUP BY ${dimensionList} ORDER BY ${dimensionList}` : "";
+        const select =
+          dimensions.length > 0
+            ? `${dimensionList}, ${METRIC_SQL[metric]} AS metric_value, COUNT(*) AS group_size`
+            : `${METRIC_SQL[metric]} AS metric_value, COUNT(*) AS group_size`;
+        statement = db.prepare(`SELECT ${select} FROM tickets${grouping}`);
+        aggregateStatements.set(key, statement);
+      }
+      return statement.all().map((row) => {
+        const cell = row as Record<string, unknown>;
+        const dims: Record<string, string> = {};
+        for (const dimension of dimensions) dims[dimension] = String(cell[dimension]);
+        return Object.freeze({
+          dimensions: Object.freeze(dims),
+          value: Number(cell.metric_value),
+          groupSize: Number(cell.group_size),
+        });
+      });
+    };
+
     return {
       rowCount: () => toCount(countAll.get()),
       hasCanaryRow: () => toCount(countCanary.get(CANARY.email, CANARY.freeText)) > 0,
       groupSize: (week, region) => toCount(countGroup.get(week, region)),
+      aggregate,
       close: () => db.close(),
     };
   } catch (error) {
