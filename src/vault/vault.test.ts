@@ -33,6 +33,21 @@ describe("schema", () => {
   it("labels identifiers and free text as sensitive", () => {
     expect(SENSITIVE_COLUMNS).toEqual(["customer_id", "email", "phone", "free_text"]);
   });
+
+  it("exports only runtime-frozen classification constants", () => {
+    for (const value of [
+      COLUMN_SENSITIVITY,
+      SENSITIVE_COLUMNS,
+      SAFE_DIMENSIONS,
+      METRIC_SOURCE_COLUMNS,
+      CANARY,
+      SMALL_CELL,
+      WEEKS,
+      REGIONS,
+    ]) {
+      expect(Object.isFrozen(value)).toBe(true);
+    }
+  });
 });
 
 describe("seed", () => {

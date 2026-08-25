@@ -43,21 +43,20 @@ export function openVaultDatabase(): VaultDatabase {
     throw error;
   }
 
-  const count = (sql: string, ...params: string[]): number => {
-    const result = db.prepare(sql).get(...params);
-    return Number(result?.n ?? 0);
-  };
+  // Read statements are prepared once and reused: Node 24 has no
+  // StatementSync.close(), so per-call prepare() would accumulate unfinalized
+  // statements that sqlite3_close_v2() only reclaims after GC.
+  const countAll = db.prepare("SELECT COUNT(*) AS n FROM tickets");
+  const countCanary = db.prepare(
+    "SELECT COUNT(*) AS n FROM tickets WHERE email = ? AND free_text = ?",
+  );
+  const countGroup = db.prepare("SELECT COUNT(*) AS n FROM tickets WHERE week = ? AND region = ?");
+  const toCount = (row: Record<string, unknown> | undefined): number => Number(row?.n ?? 0);
 
   return {
-    rowCount: () => count("SELECT COUNT(*) AS n FROM tickets"),
-    hasCanaryRow: () =>
-      count(
-        "SELECT COUNT(*) AS n FROM tickets WHERE email = ? AND free_text = ?",
-        CANARY.email,
-        CANARY.freeText,
-      ) > 0,
-    groupSize: (week, region) =>
-      count("SELECT COUNT(*) AS n FROM tickets WHERE week = ? AND region = ?", week, region),
+    rowCount: () => toCount(countAll.get()),
+    hasCanaryRow: () => toCount(countCanary.get(CANARY.email, CANARY.freeText)) > 0,
+    groupSize: (week, region) => toCount(countGroup.get(week, region)),
     close: () => db.close(),
   };
 }
