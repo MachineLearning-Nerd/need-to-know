@@ -30,7 +30,44 @@ npm run typecheck
 npm run lint
 ```
 
-Instructions for running the Vault MCP server and the TrueForge agent land as those pieces merge (this repo is being built in public during the hackathon window — see Status).
+### Running the full agent flow
+
+You need a running TrueForge server (`@truefoundry/trueforge@0.1.4`) and a model provider API key.
+
+**Step 1 — start the Vault MCP server:**
+
+```bash
+npm run start-vault            # listens on http://localhost:8788/mcp
+# or: npm run start-vault -- --port 9000
+```
+
+**Step 2 — register the vault and agent in TrueForge:**
+
+```bash
+# Register the Vault MCP server (run once, or after TrueForge restarts)
+curl -s -X POST http://localhost:8890/api/v1/settings/mcp-servers \
+  -H 'content-type: application/json' \
+  -d '{"manifest":{"type":"remote","name":"vault","url":"http://localhost:8788/mcp","description":"Need-to-Know synthetic vault"}}'
+
+# Register the agent (run once; see src/agent/manifest.ts for the full schema)
+# Replace <provider> and <model-id> with your TrueForge model provider and model.
+curl -s -X POST http://localhost:8890/api/v1/agents \
+  -H 'content-type: application/json' \
+  -d '{"name":"need-to-know","manifest":{...}}'
+```
+
+The `buildAgentManifest(provider, modelId)` function in `src/agent/manifest.ts` produces the exact manifest object for the POST body.
+
+**Step 3 — open the TrueForge UI** at `http://localhost:8890` and start a session with the `need-to-know` agent.
+
+### Verifying a release receipt
+
+After a successful release the agent returns a receipt. Save it to a file and verify it:
+
+```bash
+npm run verify-receipt -- receipt.json
+# verify-receipt: PASS receipt=r-1 query=q-1
+```
 
 ## AI-assisted development disclosure
 
@@ -38,4 +75,10 @@ This project is built with AI coding assistants (Claude Code and Codex as pair p
 
 ## Status
 
-Day 2 of the build window. Current phase: project bootstrap (tooling, CI, docs). The Vault MCP server, release-contract library, and TrueForge agent wiring follow as separate pull requests.
+Phase 5 of the build window complete. All five components are wired:
+
+- **Phase 1** - Vault SQLite database: synthetic support-ticket data with canary row and small-cell case.
+- **Phase 2** - Deterministic ReleaseContract library: allowlists, group-size enforcement, canonical hashing.
+- **Phase 3** - Vault MCP server: five-tool boundary (describe, prepare, chart, validate, release). No raw-row tool.
+- **Phase 4** - `verify-receipt` CLI: recomputes hashes, checks persisted event ordering, fails closed on partial fetches.
+- **Phase 5** - TrueForge agent wiring: root prompt, parallel subagents (planner/privacy-reviewer/evidence-reviewer), Ask User Questions, OpenUI clearance/denial/receipt cards, agent manifest with `require_approval_for_tools: ["release_result"]`.
