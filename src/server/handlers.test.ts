@@ -521,6 +521,7 @@ describe("fail-closed hardening", () => {
     ) as unknown as { queryId: string };
     const entry = store.getPrepared(prepared.queryId);
     if (entry === undefined) throw new Error("entry must exist");
+    expect(Object.isFrozen(entry.candidate.columns)).toBe(true);
     expect(Object.isFrozen(entry.candidate.rows)).toBe(true);
     expect(Object.isFrozen(entry.candidate.rows[0])).toBe(true);
     expect(() => (entry.candidate.queryPlan.dimensions as string[]).push("email")).toThrow();
