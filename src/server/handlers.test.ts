@@ -311,6 +311,105 @@ describe("release_result", () => {
   });
 });
 
+describe("fail-closed hardening", () => {
+  it("clips oversized query ids at the audit write", () => {
+    store.recordAudit(`q-${"x".repeat(500)}`, "unknown_query_id");
+    const last = store.audits().at(-1);
+    expect(last?.queryId.length).toBe(65);
+  });
+
+  it("audits a thrown release error and never echoes internals", () => {
+    const store2 = createVaultStore();
+    let explode = false;
+    const flaky: VaultDatabase = {
+      ...db,
+      aggregate: (dimensions, metric) => {
+        if (explode) throw new Error("INTERNAL_MARKER_xyz");
+        return db.aggregate(dimensions, metric);
+      },
+    };
+    const handlers2 = createVaultHandlers(flaky, store2);
+    const prepared = payload(
+      handlers2.prepareAnalysis({
+        ...goodMission,
+        dimensions: ["week", "region"],
+        metric: "ticket_count",
+      }),
+    ) as unknown as { queryId: string };
+    const verdict = payload(
+      handlers2.validateRelease({ queryId: prepared.queryId }),
+    ) as unknown as {
+      contractHash: string;
+      outputHash: string;
+    };
+    explode = true;
+    const result = handlers2.releaseResult({ queryId: prepared.queryId, ...verdict });
+    expect(result.isError).toBe(true);
+    const text = JSON.stringify(result);
+    expect(text).not.toContain("INTERNAL_MARKER_xyz");
+    expect(payload(result).error).toBe("internal_error");
+    expect(store2.audits().at(-1)?.outcome).toBe("denied");
+    expect(store2.getReceipt(prepared.queryId)).toBeUndefined();
+  });
+
+  it("stores deep-frozen candidates whose mutation throws", () => {
+    const prepared = payload(
+      handlers.prepareAnalysis({
+        ...goodMission,
+        dimensions: ["region"],
+        metric: "ticket_count",
+      }),
+    ) as unknown as { queryId: string };
+    const entry = store.getPrepared(prepared.queryId);
+    if (entry === undefined) throw new Error("entry must exist");
+    expect(Object.isFrozen(entry.candidate.rows)).toBe(true);
+    expect(Object.isFrozen(entry.candidate.rows[0])).toBe(true);
+    expect(() => (entry.candidate.queryPlan.dimensions as string[]).push("email")).toThrow();
+    expect(() => (entry.candidate.rows as unknown[]).push({})).toThrow();
+  });
+
+  it("refuses a duplicate receipt at the write itself", () => {
+    const store2 = createVaultStore();
+    const receipt = {
+      queryId: "q-1",
+      contractHash: "0".repeat(64),
+      outputHash: "0".repeat(64),
+      datasetVersion: "support-tickets-v1",
+      policyVersion: "policy-v1",
+    };
+    store2.saveReceipt(receipt);
+    expect(() => store2.saveReceipt(receipt)).toThrow();
+  });
+
+  it("audits needs_review when a stored candidate is malformed", () => {
+    const base = {
+      purpose: goodMission.purpose,
+      audience: goodMission.audience,
+      columns: ["week", "ticket_count"],
+      rows: [{ week: "2026-W32", ticket_count: 5, group_size: 5 }],
+      minGroupSize: 3,
+      datasetVersion: "support-tickets-v1",
+      policyVersion: "policy-v1",
+      queryPlan: {
+        sourceDataset: "support",
+        dimensions: ["week"],
+        metric: "ticket_count",
+        filters: [],
+        joins: [],
+      },
+    };
+    const smuggled = store.savePrepared({ ...base, extra: "unknown" } as never, 0);
+    const result = handlers.releaseResult({
+      queryId: smuggled.queryId,
+      contractHash: "0".repeat(64),
+      outputHash: "0".repeat(64),
+    });
+    expect(result.isError).toBe(true);
+    expect(store.audits().at(-1)?.outcome).toBe("needs_review");
+    expect(store.getReceipt(smuggled.queryId)).toBeUndefined();
+  });
+});
+
 describe("render_safe_chart", () => {
   it("refuses to render anything that has not been released", () => {
     const prepared = payload(

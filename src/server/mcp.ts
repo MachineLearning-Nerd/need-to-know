@@ -111,6 +111,10 @@ export type RunningVaultServer = {
   close(): Promise<void>;
 };
 
+// Generous for real tool calls (the largest legitimate payload is two hashes
+// and a queryId), tight enough that a hostile body cannot balloon memory.
+const MAX_REQUEST_BODY_BYTES = 1_048_576;
+
 // Stateless transport, fresh server per request: tool calls are independent
 // and all durable state lives in the vault store, so there is no MCP session
 // to manage and nothing for a stale session to leak.
@@ -122,6 +126,21 @@ export function startVaultMcpServer(
     if (request.url !== "/mcp") {
       response.writeHead(404, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: "not_found" }));
+      return;
+    }
+    // SDK 1.30 reads the body with no size cap (the old 4 MB guard is gone),
+    // so an oversized request must be refused before it is buffered. Chunked
+    // bodies carry no length up front, so they are refused outright rather
+    // than trusted.
+    if (request.method === "POST" && request.headers["transfer-encoding"] !== undefined) {
+      response.writeHead(411, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "length_required" }));
+      return;
+    }
+    const contentLength = Number(request.headers["content-length"] ?? 0);
+    if (!Number.isFinite(contentLength) || contentLength > MAX_REQUEST_BODY_BYTES) {
+      response.writeHead(413, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "payload_too_large" }));
       return;
     }
     const server = buildMcpServer(handlers);
@@ -148,7 +167,9 @@ export function startVaultMcpServer(
 
   return new Promise((resolve, reject) => {
     httpServer.once("error", reject);
-    httpServer.listen(port, () => {
+    // The vault process holds raw sensitive rows in memory: its tool surface
+    // binds to loopback only, never to every interface.
+    httpServer.listen(port, "localhost", () => {
       const address = httpServer.address() as AddressInfo;
       resolve({
         port: address.port,

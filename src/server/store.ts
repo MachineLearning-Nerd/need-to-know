@@ -59,10 +59,21 @@ export function createVaultStore(): VaultStore {
     savePrepared: (candidate, suppressedCells) => {
       const queryId = `q-${nextQueryId}`;
       nextQueryId += 1;
+      // Deep-frozen copies, not references: queryPlan.dimensions aliases the
+      // caller's parsed input array, and a post-release in-process mutation
+      // of rows would change what render_safe_chart serves with no check.
       const entry: PreparedAnalysis = Object.freeze({
         queryId,
         candidate: Object.freeze({
           ...candidate,
+          columns: Object.freeze([...candidate.columns]),
+          rows: Object.freeze(candidate.rows.map((row) => Object.freeze({ ...row }))),
+          queryPlan: Object.freeze({
+            ...candidate.queryPlan,
+            dimensions: Object.freeze([...candidate.queryPlan.dimensions]),
+            filters: Object.freeze([...candidate.queryPlan.filters]),
+            joins: Object.freeze([...candidate.queryPlan.joins]),
+          }),
           provenance: Object.freeze({
             sourceDataset: candidate.queryPlan.sourceDataset,
             datasetVersion: candidate.datasetVersion,
@@ -78,7 +89,10 @@ export function createVaultStore(): VaultStore {
     recordAudit: (queryId, outcome, findings = []) => {
       const record: AuditRecord = Object.freeze({
         seq: auditLog.length + 1,
-        queryId,
+        // Clipped where the write happens: vault-issued ids are at most 64
+        // chars, so anything longer is caller-controlled and must not grow
+        // the enforcement record without bound.
+        queryId: queryId.length > 64 ? `${queryId.slice(0, 64)}…` : queryId,
         outcome,
         findings: Object.freeze([...findings]),
       });

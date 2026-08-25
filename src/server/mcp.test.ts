@@ -72,6 +72,31 @@ describe("vault MCP scaffold", () => {
     const response = await fetch(`http://localhost:${server.port}/tickets`);
     expect(response.status).toBe(404);
   });
+
+  it("refuses oversized bodies before buffering them", async () => {
+    const response = await fetch(`http://localhost:${server.port}/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: `{"pad":"${"x".repeat(2_000_000)}"}`,
+    });
+    expect(response.status).toBe(413);
+  });
+
+  it("refuses chunked bodies that carry no length up front", async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode("{}"));
+        controller.close();
+      },
+    });
+    const response = await fetch(`http://localhost:${server.port}/mcp`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: stream,
+      duplex: "half",
+    });
+    expect(response.status).toBe(411);
+  });
 });
 
 describe("end-to-end release flow over the wire", () => {

@@ -35,6 +35,75 @@ function aggregateCandidateRows(
   };
 }
 
+function releaseResultInner(
+  db: VaultDatabase,
+  store: VaultStore,
+  input: { queryId: string; contractHash: string; outputHash: string },
+) {
+  const entry = store.getPrepared(input.queryId);
+  if (entry === undefined) {
+    store.recordAudit(input.queryId, "unknown_query_id");
+    return errorResult("unknown_query_id");
+  }
+  if (store.getReceipt(input.queryId) !== undefined) {
+    store.recordAudit(input.queryId, "already_released");
+    return errorResult("already_released");
+  }
+
+  const verdict = verifyRelease(entry.candidate, input.contractHash, input.outputHash);
+  if (verdict.status !== "approved") {
+    store.recordAudit(input.queryId, verdict.status, verdict.findings);
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify({
+            error: "release_denied",
+            status: verdict.status,
+            findings: verdict.findings,
+          }),
+        },
+      ],
+      isError: true,
+    };
+  }
+
+  // Execution-time evidence revalidation: the stored candidate must match
+  // what the vault can reproduce from its own data right now. A candidate
+  // that lies about group sizes passes every contract rule — only the data
+  // owner recomputing its own aggregation can catch it.
+  const recomputed = aggregateCandidateRows(
+    db,
+    entry.candidate.queryPlan.dimensions,
+    // Approval already proved metric membership in ALLOWED_METRICS, which is
+    // the same closed set AggregateMetric names.
+    entry.candidate.queryPlan.metric as AggregateMetric,
+  );
+  if (canonicalize(recomputed.rows) !== canonicalize(entry.candidate.rows)) {
+    store.recordAudit(input.queryId, "denied", [{ code: "evidence_mismatch" }]);
+    return errorResult("release_denied", "evidence_mismatch");
+  }
+
+  const receipt = store.saveReceipt({
+    queryId: input.queryId,
+    contractHash: verdict.contractHash,
+    outputHash: verdict.outputHash,
+    datasetVersion: entry.candidate.datasetVersion,
+    policyVersion: entry.candidate.policyVersion,
+  });
+  store.recordAudit(input.queryId, "released");
+
+  const releasedRows = entry.candidate.rows.map((row) => {
+    const projected: Record<string, string | number> = {};
+    for (const column of entry.candidate.columns) {
+      const value = row[column];
+      if (value !== undefined) projected[column] = value;
+    }
+    return projected;
+  });
+  return jsonResult({ receipt, columns: entry.candidate.columns, rows: releasedRows });
+}
+
 export function createVaultHandlers(db: VaultDatabase, store: VaultStore): VaultToolHandlers {
   return {
     // Metadata only: column names, sensitivity labels, policy constants, and
@@ -114,66 +183,14 @@ export function createVaultHandlers(db: VaultDatabase, store: VaultStore): Vault
       return jsonResult({ queryId: entry.queryId, ...validateRelease(entry.candidate) });
     },
     releaseResult: (input) => {
-      const entry = store.getPrepared(input.queryId);
-      if (entry === undefined) {
-        store.recordAudit(input.queryId, "unknown_query_id");
-        return errorResult("unknown_query_id");
+      // Any escaped exception would be a denial with no audit record and an
+      // internal error message echoed to the caller — neither is fail-closed.
+      try {
+        return releaseResultInner(db, store, input);
+      } catch {
+        store.recordAudit(input.queryId, "denied", [{ code: "candidate_malformed" }]);
+        return errorResult("internal_error");
       }
-      if (store.getReceipt(input.queryId) !== undefined) {
-        store.recordAudit(input.queryId, "already_released");
-        return errorResult("already_released");
-      }
-
-      const verdict = verifyRelease(entry.candidate, input.contractHash, input.outputHash);
-      if (verdict.status !== "approved") {
-        store.recordAudit(input.queryId, verdict.status, verdict.findings);
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                error: "release_denied",
-                status: verdict.status,
-                findings: verdict.findings,
-              }),
-            },
-          ],
-          isError: true,
-        };
-      }
-
-      // Execution-time evidence revalidation: the stored candidate must match
-      // what the vault can reproduce from its own data right now. A candidate
-      // that lies about group sizes passes every contract rule — only the data
-      // owner recomputing its own aggregation can catch it.
-      const recomputed = aggregateCandidateRows(
-        db,
-        entry.candidate.queryPlan.dimensions,
-        entry.candidate.queryPlan.metric as AggregateMetric,
-      );
-      if (canonicalize(recomputed.rows) !== canonicalize(entry.candidate.rows)) {
-        store.recordAudit(input.queryId, "denied", [{ code: "evidence_mismatch" }]);
-        return errorResult("release_denied", "evidence_mismatch");
-      }
-
-      const receipt = store.saveReceipt({
-        queryId: input.queryId,
-        contractHash: verdict.contractHash,
-        outputHash: verdict.outputHash,
-        datasetVersion: entry.candidate.datasetVersion,
-        policyVersion: entry.candidate.policyVersion,
-      });
-      store.recordAudit(input.queryId, "released");
-
-      const releasedRows = entry.candidate.rows.map((row) => {
-        const projected: Record<string, string | number> = {};
-        for (const column of entry.candidate.columns) {
-          const value = row[column];
-          if (value !== undefined) projected[column] = value;
-        }
-        return projected;
-      });
-      return jsonResult({ receipt, columns: entry.candidate.columns, rows: releasedRows });
     },
     renderSafeChart: (input) => {
       const entry = store.getPrepared(input.queryId);
