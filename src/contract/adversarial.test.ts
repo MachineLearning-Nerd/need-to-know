@@ -54,13 +54,33 @@ describe("post-approval tampering", () => {
 
   it("denies swapped hashes even when both candidates individually validate", () => {
     const original = approvedHashes(makeCandidate());
+    // Same group sizes as the original so the contract hash matches: only the
+    // released content differs, and the output hash alone must catch it.
     const other = makeCandidate({
-      rows: [{ week: "2026-W31", region: "EU", ticket_count: 4, group_size: 4 }],
+      rows: [
+        { week: "2026-W31", region: "NA", ticket_count: 4, group_size: 12 },
+        { week: "2026-W31", region: "EU", ticket_count: 7, group_size: 9 },
+      ],
     });
     const result = verifyRelease(other, original.contractHash, original.outputHash);
     expect(result.status).toBe("denied");
     if (result.status === "denied") {
       expect(result.findings).toEqual([{ code: "output_hash_mismatch" }]);
+    }
+  });
+
+  it("denies regrouping after approval: identical output, weaker group sizes", () => {
+    const { contractHash, outputHash } = approvedHashes(makeCandidate());
+    const regrouped = makeCandidate({
+      rows: makeCandidate().rows.map((row) => ({ ...row, group_size: 3 })),
+    });
+    // The regrouped candidate validates on its own (3 meets the minimum) and
+    // releases byte-identical rows — only the group-size evidence bound into
+    // the contract hash reveals it is not what the approver authorized.
+    const result = verifyRelease(regrouped, contractHash, outputHash);
+    expect(result.status).toBe("denied");
+    if (result.status === "denied") {
+      expect(result.findings).toEqual([{ code: "contract_hash_mismatch" }]);
     }
   });
 });

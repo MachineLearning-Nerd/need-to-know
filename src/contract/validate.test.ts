@@ -18,7 +18,7 @@ describe("validateRelease", () => {
     expect(validateRelease(makeCandidate())).toEqual(validateRelease(makeCandidate()));
   });
 
-  it("excludes never-released group_size metadata from the output hash", () => {
+  it("keeps group_size out of the output hash but bound into the contract hash", () => {
     const base = makeCandidate();
     const regrouped = makeCandidate({
       rows: base.rows.map((row) => ({ ...row, group_size: 50 })),
@@ -29,6 +29,40 @@ describe("validateRelease", () => {
       throw new Error("fixtures must validate");
     }
     expect(second.outputHash).toBe(first.outputHash);
+    expect(second.contractHash).not.toBe(first.contractHash);
+  });
+
+  it("denies columns that are not exactly what the plan computes", () => {
+    const result = validateRelease(
+      makeCandidate({
+        columns: ["week", "region", "avg_resolution_hours"],
+        rows: [{ week: "2026-W32", region: "NA", avg_resolution_hours: 5.5, group_size: 12 }],
+      }),
+    );
+    expect(result.status).toBe("denied");
+    if (result.status === "denied") {
+      expect(result.findings).toContainEqual({
+        code: "columns_plan_mismatch",
+        detail: "week,region,avg_resolution_hours",
+      });
+    }
+  });
+
+  it("approves when columns match a plan computing avg_resolution_hours", () => {
+    const result = validateRelease(
+      makeCandidate({
+        columns: ["week", "region", "avg_resolution_hours"],
+        rows: [{ week: "2026-W32", region: "NA", avg_resolution_hours: 5.5, group_size: 12 }],
+        queryPlan: {
+          sourceDataset: "support",
+          dimensions: ["week", "region"],
+          metric: "avg_resolution_hours",
+          filters: [],
+          joins: [],
+        },
+      }),
+    );
+    expect(result.status).toBe("approved");
   });
 
   it("denies with every violated rule reported, not just the first", () => {

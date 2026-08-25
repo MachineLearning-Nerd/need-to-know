@@ -2,7 +2,7 @@ import { type Sha256Hex, sha256Canonical } from "./canonical.js";
 import type { Finding } from "./findings.js";
 import { authorizeMission } from "./policy.js";
 import { checkProvenance, checkQueryPlan, type Provenance, type QueryPlan } from "./queryPlan.js";
-import { checkColumns, checkRows, MIN_GROUP_SIZE } from "./rows.js";
+import { checkColumns, checkRows, GROUP_SIZE_FIELD, MIN_GROUP_SIZE } from "./rows.js";
 import { snapshotArray, snapshotRecord } from "./snapshot.js";
 
 export type AggregateRow = Readonly<Record<string, string | number>>;
@@ -32,8 +32,12 @@ export type ValidationResult =
 // covers exactly the rows that would be released. Both recompute from the
 // candidate itself, so any post-validation mutation changes the hash.
 export function contractHashOf(candidate: ReleaseCandidate): Sha256Hex {
-  const { rows: _rows, ...contract } = candidate;
-  return sha256Canonical(contract);
+  const { rows, ...contract } = candidate;
+  // Group sizes are enforcement evidence: never released, but part of what the
+  // approver authorized — regrouping the same output after approval (e.g. 12
+  // per cell down to 3) must break execution-time verification.
+  const groupSizes = rows.map((row) => row[GROUP_SIZE_FIELD] ?? null);
+  return sha256Canonical({ ...contract, groupSizes });
 }
 
 // The output hash covers the rows projected to the declared columns — the
@@ -73,6 +77,16 @@ export function validateRelease(candidate: unknown): ValidationResult {
     findings.push(...checkColumns(parsed.columns));
     findings.push(...checkRows(parsed.rows, parsed.columns));
     findings.push(...checkQueryPlan(parsed.queryPlan));
+    // The released columns must be exactly what the validated plan computes —
+    // otherwise one analysis's provenance could authorize a different payload.
+    const planColumns = new Set([...parsed.queryPlan.dimensions, parsed.queryPlan.metric]);
+    const declaredColumns = new Set(parsed.columns);
+    if (
+      planColumns.size !== declaredColumns.size ||
+      [...declaredColumns].some((column) => !planColumns.has(column))
+    ) {
+      findings.push({ code: "columns_plan_mismatch", detail: parsed.columns.join(",") });
+    }
     findings.push(
       ...checkProvenance(
         parsed.provenance,
