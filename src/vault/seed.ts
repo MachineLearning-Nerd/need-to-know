@@ -52,8 +52,12 @@ function makeRow(index: number, week: string, region: string, random: () => numb
   };
 }
 
+// Hackathon start date. Changing it changes every generated row and fails the
+// pinned-fixture test — regenerate the recorded fixture values deliberately.
+const FIXTURE_SEED = 20260824;
+
 export function seedRows(): TicketRow[] {
-  const random = mulberry32(20260824);
+  const random = mulberry32(FIXTURE_SEED);
   const rows: TicketRow[] = [];
   // 3-10 tickets per bulk (week, region) group keeps every bulk cell at k >= 3.
   for (const week of WEEKS) {
