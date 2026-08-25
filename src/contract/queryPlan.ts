@@ -9,7 +9,9 @@ export const ALLOWED_METRICS = Object.freeze(["ticket_count", "avg_resolution_ho
 // domain before anything is hashed; queryId is vault-issued, so it gets a
 // shape bound too — otherwise it is the one unconstrained string that could
 // ride an approved candidate into canonical serialization and SHA-256.
-export const QUERY_ID_PATTERN = /^[A-Za-z0-9_-]{1,64}$/;
+// Module-private and frozen: an exported mutable RegExp would let an importer
+// shadow .test at runtime and reopen the unbounded-queryId path.
+const QUERY_ID_PATTERN = Object.freeze(/^[A-Za-z0-9_-]{1,64}$/);
 
 export type QueryPlan = {
   readonly sourceDataset: string;
