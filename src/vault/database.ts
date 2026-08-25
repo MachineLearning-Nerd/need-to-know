@@ -11,11 +11,13 @@ export type AggregateCell = Readonly<{
   groupSize: number;
 }>;
 
-// The DatabaseSync handle stays inside this closure and no exported query takes
-// a caller-chosen probe against a sensitive column — a parameterized substring
-// or equality check would be a boolean oracle that leaks row contents bit by bit.
-// aggregate() takes no caller values at all: only identifiers checked against
-// the frozen allowlists below ever reach the SQL text.
+// The DatabaseSync handle stays inside this closure and nothing exported can
+// probe a sensitive column — a parameterized substring or equality check
+// against email or free_text would be a boolean oracle that leaks row contents
+// bit by bit. groupSize() is parameterized, but only over two safe dimensions
+// and it returns a count the aggregate surface already exposes. aggregate()
+// takes no caller values at all: only identifiers checked against the frozen
+// allowlists below ever reach the SQL text.
 export type VaultDatabase = {
   rowCount(): number;
   hasCanaryRow(): boolean;

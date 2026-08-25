@@ -111,7 +111,15 @@ describe("prepare_analysis", () => {
       };
     };
     expect(entry.queryId).toMatch(/^q-\d+$/);
-    expect(entry.suppressedCells).toBe(1);
+    // Suppression runs once at the finest granularity, so the count reports
+    // the fine cells withheld regardless of the granularity requested — the
+    // same number for any dimension subset, which is what makes differencing
+    // across granularities yield nothing.
+    expect(entry.suppressedCells).toBe(14);
+    const coarser = payload(
+      handlers.prepareAnalysis({ ...goodMission, dimensions: ["week"], metric: "ticket_count" }),
+    ) as unknown as { suppressedCells: number };
+    expect(coarser.suppressedCells).toBe(entry.suppressedCells);
     for (const row of entry.candidate.rows) {
       expect(row.group_size).toBeGreaterThanOrEqual(3);
       expect(row.region).not.toBe(SMALL_CELL.region);
@@ -312,11 +320,96 @@ describe("release_result", () => {
   });
 });
 
+describe("suppression is not reversible by differencing", () => {
+  function releasedRows(dimensions: string[], metric = "ticket_count") {
+    const result = handlers.prepareAnalysis({ ...goodMission, dimensions, metric });
+    const entry = payload(result) as unknown as {
+      candidate: { rows: Array<Record<string, string | number>> };
+    };
+    return entry.candidate.rows;
+  }
+
+  it("keeps every granularity consistent so no residual reveals a hidden cell", () => {
+    // The attack: query coarse, query fine, subtract. If the coarse total
+    // still contains rows the fine query suppressed, the difference IS the
+    // suppressed cell — the exact 11-cell reconstruction this fix closes.
+    const fine = releasedRows(["week", "region", "category"]);
+    for (const [parent, child] of [
+      [["week"], ["week", "region"]],
+      [["region"], ["region", "category"]],
+      [
+        ["week", "region"],
+        ["week", "region", "category"],
+      ],
+      [[], ["week"]],
+    ] as const) {
+      const coarse = releasedRows([...parent]);
+      const finer = releasedRows([...child]);
+      for (const parentRow of coarse) {
+        const childSum = finer
+          .filter((row) => parent.every((dimension) => row[dimension] === parentRow[dimension]))
+          .reduce((total, row) => total + (row.ticket_count as number), 0);
+        expect(childSum, `${parent.join("+") || "(all)"} vs ${child.join("+")}`).toBe(
+          parentRow.ticket_count,
+        );
+      }
+    }
+    expect(fine.length).toBeGreaterThan(0);
+  });
+
+  it("never releases a row whose group is below the minimum at any granularity", () => {
+    for (const dimensions of [[], ["week"], ["region"], ["week", "region"]]) {
+      for (const row of releasedRows(dimensions)) {
+        expect(row.group_size).toBeGreaterThanOrEqual(3);
+        expect(row.region).not.toBe(SMALL_CELL.region);
+      }
+    }
+  });
+
+  it("rolls averages up as count-weighted means", () => {
+    const byWeek = releasedRows(["week"], "avg_resolution_hours");
+    for (const row of byWeek) {
+      const value = row.avg_resolution_hours as number;
+      expect(Number.isFinite(value)).toBe(true);
+      expect(value).toBe(Math.round(value * 100) / 100);
+    }
+  });
+});
+
 describe("fail-closed hardening", () => {
   it("clips oversized query ids at the audit write", () => {
     store.recordAudit(`q-${"x".repeat(500)}`, "unknown_query_id");
     const last = store.audits().at(-1);
     expect(last?.queryId.length).toBe(65);
+  });
+
+  it("audits sensitive-dimension attempts and pre-release chart reads", () => {
+    const before = store.audits().length;
+    handlers.prepareAnalysis({
+      ...goodMission,
+      dimensions: ["week", "email"],
+      metric: "ticket_count",
+    });
+    expect(store.audits().at(-1)?.outcome).toBe("dimension_not_allowed");
+
+    const prepared = payload(
+      handlers.prepareAnalysis({ ...goodMission, dimensions: ["week"], metric: "ticket_count" }),
+    ) as unknown as { queryId: string };
+    handlers.renderSafeChart({ queryId: prepared.queryId });
+    expect(store.audits().at(-1)?.outcome).toBe("not_released");
+    expect(store.audits().length).toBeGreaterThan(before + 1);
+  });
+
+  it("evicts the oldest prepared entry past the cap", () => {
+    const store2 = createVaultStore();
+    const handlers2 = createVaultHandlers(db, store2);
+    const first = payload(
+      handlers2.prepareAnalysis({ ...goodMission, dimensions: ["week"], metric: "ticket_count" }),
+    ) as unknown as { queryId: string };
+    for (let index = 0; index < 500; index += 1) {
+      handlers2.prepareAnalysis({ ...goodMission, dimensions: ["week"], metric: "ticket_count" });
+    }
+    expect(store2.getPrepared(first.queryId)).toBeUndefined();
   });
 
   it("stores frozen copies of findings, immune to mutation of the originals", () => {

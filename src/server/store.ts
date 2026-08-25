@@ -16,7 +16,9 @@ export type AuditOutcome =
   | "denied"
   | "needs_review"
   | "unknown_query_id"
-  | "already_released";
+  | "already_released"
+  | "not_released"
+  | "dimension_not_allowed";
 
 export type AuditRecord = Readonly<{
   seq: number;
@@ -48,6 +50,8 @@ export type VaultStore = {
   saveReceipt(receipt: Omit<ReleaseReceipt, "receiptId">): ReleaseReceipt;
   getReceipt(queryId: string): ReleaseReceipt | undefined;
 };
+
+const MAX_PREPARED_ENTRIES = 500;
 
 export function createVaultStore(): VaultStore {
   const prepared = new Map<string, PreparedAnalysis>();
@@ -84,6 +88,13 @@ export function createVaultStore(): VaultStore {
         suppressedCells,
       });
       prepared.set(queryId, entry);
+      // Bounded: a caller can drive prepare_analysis in a loop and every entry
+      // retains its rows. The audit log deliberately stays uncapped — dropping
+      // enforcement records to save memory would be fail-open.
+      if (prepared.size > MAX_PREPARED_ENTRIES) {
+        const oldest = prepared.keys().next();
+        if (!oldest.done) prepared.delete(oldest.value);
+      }
       return entry;
     },
     getPrepared: (queryId) => prepared.get(queryId),

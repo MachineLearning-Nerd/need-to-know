@@ -86,6 +86,44 @@ describe("vault MCP scaffold", () => {
     expect(response.status).toBe(404);
   });
 
+  it("never echoes an internal error message from any tool", async () => {
+    const boom = () => {
+      throw new Error("INTERNAL_MARKER_/Users/secret/path.ts:42 sqlite: no such column: email");
+    };
+    const throwing = await startVaultMcpServer(0, {
+      describeDataset: boom,
+      prepareAnalysis: boom,
+      validateRelease: boom,
+      releaseResult: boom,
+      renderSafeChart: boom,
+    });
+    const throwingClient = new Client({ name: "throw-test", version: "0.0.0" });
+    await throwingClient.connect(
+      new StreamableHTTPClientTransport(
+        new URL(`http://localhost:${throwing.port}/mcp`),
+      ) as unknown as Transport,
+    );
+    try {
+      for (const [name, args] of [
+        ["describe_dataset", {}],
+        ["prepare_analysis", { purpose: "p", audience: "a", dimensions: [], metric: "m" }],
+        ["validate_release", { queryId: "q-1" }],
+        ["release_result", { queryId: "q-1", contractHash: "x", outputHash: "y" }],
+        ["render_safe_chart", { queryId: "q-1" }],
+      ] as const) {
+        const result = await throwingClient.callTool({ name, arguments: args });
+        const text = JSON.stringify(result.content);
+        expect(text, name).not.toContain("INTERNAL_MARKER");
+        expect(JSON.parse((result.content as Array<{ text: string }>)[0]?.text ?? "{}").error).toBe(
+          "internal_error",
+        );
+      }
+    } finally {
+      await throwingClient.close();
+      await throwing.close();
+    }
+  });
+
   it("refuses non-loopback Host and Origin headers against DNS rebinding", async () => {
     // fetch strips Host overrides (forbidden header), so the rebound request
     // goes through node:http, which sends exactly what it is told.

@@ -37,6 +37,17 @@ export function errorResult(code: string, detail?: string): ToolResult {
   };
 }
 
+// The SDK echoes a thrown Error's message verbatim to the caller, which would
+// leak internal paths and database errors. Every tool call is wrapped so a
+// throw becomes a generic denial instead.
+function guarded(run: () => ToolResult): ToolResult {
+  try {
+    return run();
+  } catch {
+    return errorResult("internal_error");
+  }
+}
+
 function buildMcpServer(handlers: VaultToolHandlers): McpServer {
   const server = new McpServer({ name: "need-to-know-vault", version: "0.1.0" });
 
@@ -47,7 +58,7 @@ function buildMcpServer(handlers: VaultToolHandlers): McpServer {
         "Schema, sensitivity labels, and safe row counts for the support-tickets dataset. Never returns row values.",
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
-    () => handlers.describeDataset(),
+    () => guarded(() => handlers.describeDataset()),
   );
 
   server.registerTool(
@@ -65,7 +76,7 @@ function buildMcpServer(handlers: VaultToolHandlers): McpServer {
       // Not destructive either — it only adds state, never transitions it.
       annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
-    (input) => handlers.prepareAnalysis(input),
+    (input) => guarded(() => handlers.prepareAnalysis(input)),
   );
 
   server.registerTool(
@@ -76,7 +87,7 @@ function buildMcpServer(handlers: VaultToolHandlers): McpServer {
       inputSchema: { queryId: z.string() },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
-    (input) => handlers.validateRelease(input),
+    (input) => guarded(() => handlers.validateRelease(input)),
   );
 
   server.registerTool(
@@ -91,7 +102,7 @@ function buildMcpServer(handlers: VaultToolHandlers): McpServer {
       },
       annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
     },
-    (input) => handlers.releaseResult(input),
+    (input) => guarded(() => handlers.releaseResult(input)),
   );
 
   server.registerTool(
@@ -102,7 +113,7 @@ function buildMcpServer(handlers: VaultToolHandlers): McpServer {
       inputSchema: { queryId: z.string() },
       annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
     },
-    (input) => handlers.renderSafeChart(input),
+    (input) => guarded(() => handlers.renderSafeChart(input)),
   );
 
   return server;
