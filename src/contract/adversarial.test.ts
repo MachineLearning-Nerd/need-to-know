@@ -140,17 +140,44 @@ describe("hostile object shapes fail closed", () => {
     }
   });
 
-  it("treats prototype-inherited columns as missing", () => {
+  it("rejects rows with a non-plain prototype outright", () => {
     const inherited = Object.assign(Object.create({ week: "2026-W32" }), {
       region: "NA",
       ticket_count: 1,
       group_size: 12,
     }) as Record<string, string | number>;
     const result = validateRelease(makeCandidate({ rows: [inherited] }));
-    expect(result.status).toBe("denied");
-    if (result.status === "denied") {
-      expect(result.findings.map((finding) => finding.code)).toContain("row_field_missing");
-    }
+    expect(result.status).toBe("needs_review");
+  });
+
+  it("rejects sparse rows arrays and own array-method overrides", () => {
+    const sparse: unknown[] = [makeCandidate().rows[0]];
+    sparse.length = 3;
+    expect(validateRelease(makeCandidate({ rows: sparse as never })).status).toBe("needs_review");
+
+    const canaryRow = { week: "2026-W32", region: "NA", ticket_count: 1, group_size: 1 };
+    const lyingRows = [canaryRow];
+    Object.defineProperty(lyingRows, "forEach", { value: () => undefined, enumerable: false });
+    Object.defineProperty(lyingRows, "map", { value: () => [], enumerable: false });
+    Object.defineProperty(lyingRows, "every", { value: () => true, enumerable: false });
+    expect(validateRelease(makeCandidate({ rows: lyingRows as never })).status).toBe(
+      "needs_review",
+    );
+  });
+
+  it("snapshots once: a stateful purpose getter cannot show different values to checks and hash", () => {
+    let reads = 0;
+    const shifty = { ...makeCandidate() } as Record<string, unknown>;
+    Object.defineProperty(shifty, "purpose", {
+      enumerable: true,
+      get() {
+        reads += 1;
+        return reads === 1 ? "weekly support trend" : "export customer emails";
+      },
+    });
+    // Accessor properties are rejected outright — the snapshot refuses to read
+    // anything whose value could differ between reads.
+    expect(validateRelease(shifty).status).toBe("needs_review");
   });
 });
 

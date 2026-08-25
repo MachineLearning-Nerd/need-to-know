@@ -3,6 +3,7 @@ import type { Finding } from "./findings.js";
 import { authorizeMission } from "./policy.js";
 import { checkProvenance, checkQueryPlan, type Provenance, type QueryPlan } from "./queryPlan.js";
 import { checkColumns, checkRows, MIN_GROUP_SIZE } from "./rows.js";
+import { snapshotArray, snapshotRecord } from "./snapshot.js";
 
 export type AggregateRow = Readonly<Record<string, string | number>>;
 
@@ -124,67 +125,106 @@ const PROVENANCE_KEYS = Object.freeze(["sourceDataset", "datasetVersion", "query
 
 // Unknown keys are rejected, not ignored: the contract hash must cover exactly
 // what the rules inspected, so a field no rule looked at can never be part of
-// what the approver ends up authorizing. Symbol and non-enumerable own keys are
-// invisible to both the checks and the canonical hash, so they are rejected too.
+// what the approver ends up authorizing.
 function hasExactKeys(record: Record<string, unknown>, keys: readonly string[]): boolean {
-  if (Object.getOwnPropertySymbols(record).length > 0) return false;
-  const allOwn = Object.getOwnPropertyNames(record);
-  return allOwn.length === keys.length && allOwn.every((key) => keys.includes(key));
+  const own = Object.keys(record);
+  return own.length === keys.length && own.every((key) => keys.includes(key));
 }
 
+// Parsing returns a frozen single-read snapshot, never the caller's object:
+// every later check and hash reads the snapshot, so a stateful getter or proxy
+// cannot show one value to authorization and another to the hash.
 function parseCandidate(value: unknown): ReleaseCandidate | null {
-  if (typeof value !== "object" || value === null) return null;
-  const record = value as Record<string, unknown>;
-  const plan = record.queryPlan;
-  const provenance = record.provenance;
+  const record = snapshotRecord(value);
+  if (record === null || !hasExactKeys(record, CANDIDATE_KEYS)) return null;
+
+  const columns = snapshotStringArray(record.columns);
+  const rows = snapshotRows(record.rows);
+  const queryPlan = parseQueryPlan(record.queryPlan);
+  const provenance = parseProvenance(record.provenance);
   if (
-    !hasExactKeys(record, CANDIDATE_KEYS) ||
+    columns === null ||
+    rows === null ||
+    queryPlan === null ||
+    provenance === null ||
     typeof record.purpose !== "string" ||
     typeof record.audience !== "string" ||
-    !isStringArray(record.columns) ||
-    !isRowArray(record.rows) ||
     typeof record.minGroupSize !== "number" ||
     typeof record.datasetVersion !== "string" ||
-    typeof record.policyVersion !== "string" ||
-    !isQueryPlan(plan) ||
-    !isProvenance(provenance)
+    typeof record.policyVersion !== "string"
   ) {
     return null;
   }
-  return value as ReleaseCandidate;
+  // Row values are still unknown at this point; checkRows validates every one
+  // before the approved path can be reached.
+  return Object.freeze({
+    purpose: record.purpose,
+    audience: record.audience,
+    columns,
+    rows: rows as readonly AggregateRow[],
+    minGroupSize: record.minGroupSize,
+    datasetVersion: record.datasetVersion,
+    policyVersion: record.policyVersion,
+    queryPlan,
+    provenance,
+  });
 }
 
-function isStringArray(value: unknown): value is readonly string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
+function snapshotStringArray(value: unknown): readonly string[] | null {
+  const items = snapshotArray(value);
+  if (items === null || !items.every((item) => typeof item === "string")) return null;
+  return Object.freeze(items as string[]);
 }
 
-function isRowArray(value: unknown): value is readonly AggregateRow[] {
-  return (
-    Array.isArray(value) &&
-    value.every((row) => typeof row === "object" && row !== null && !Array.isArray(row))
-  );
+function snapshotRows(value: unknown): ReadonlyArray<Record<string, unknown>> | null {
+  const items = snapshotArray(value);
+  if (items === null) return null;
+  const rows: Record<string, unknown>[] = [];
+  for (const item of items) {
+    const row = snapshotRecord(item);
+    if (row === null) return null;
+    rows.push(Object.freeze(row));
+  }
+  return Object.freeze(rows);
 }
 
-function isQueryPlan(value: unknown): value is QueryPlan {
-  if (typeof value !== "object" || value === null) return false;
-  const plan = value as Record<string, unknown>;
-  return (
-    hasExactKeys(plan, PLAN_KEYS) &&
-    typeof plan.sourceDataset === "string" &&
-    isStringArray(plan.dimensions) &&
-    typeof plan.metric === "string" &&
-    Array.isArray(plan.filters) &&
-    Array.isArray(plan.joins)
-  );
+function parseQueryPlan(value: unknown): QueryPlan | null {
+  const plan = snapshotRecord(value);
+  if (plan === null || !hasExactKeys(plan, PLAN_KEYS)) return null;
+  const dimensions = snapshotStringArray(plan.dimensions);
+  const filters = snapshotArray(plan.filters);
+  const joins = snapshotArray(plan.joins);
+  if (
+    dimensions === null ||
+    filters === null ||
+    joins === null ||
+    typeof plan.sourceDataset !== "string" ||
+    typeof plan.metric !== "string"
+  ) {
+    return null;
+  }
+  return Object.freeze({
+    sourceDataset: plan.sourceDataset,
+    dimensions,
+    metric: plan.metric,
+    filters: Object.freeze(filters),
+    joins: Object.freeze(joins),
+  });
 }
 
-function isProvenance(value: unknown): value is Provenance {
-  if (typeof value !== "object" || value === null) return false;
-  const provenance = value as Record<string, unknown>;
-  return (
-    hasExactKeys(provenance, PROVENANCE_KEYS) &&
-    typeof provenance.sourceDataset === "string" &&
-    typeof provenance.datasetVersion === "string" &&
-    typeof provenance.queryId === "string"
-  );
+function parseProvenance(value: unknown): Provenance | null {
+  const provenance = snapshotRecord(value);
+  if (provenance === null || !hasExactKeys(provenance, PROVENANCE_KEYS)) return null;
+  if (
+    typeof provenance.sourceDataset !== "string" ||
+    typeof provenance.datasetVersion !== "string" ||
+    typeof provenance.queryId !== "string"
+  ) {
+    return null;
+  }
+  return Object.freeze({
+    sourceDataset: provenance.sourceDataset,
+    datasetVersion: provenance.datasetVersion,
+    queryId: provenance.queryId,
+  });
 }

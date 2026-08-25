@@ -27,6 +27,8 @@ export type FindingCode =
   | "policy_version_mismatch"
   // engine
   | "min_group_size_mismatch"
+  | "columns_plan_mismatch"
+  | "value_out_of_domain"
   | "candidate_malformed"
   | "contract_hash_mismatch"
   | "output_hash_mismatch";
