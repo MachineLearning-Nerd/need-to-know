@@ -157,6 +157,12 @@ export function createVaultHandlers(db: VaultDatabase, store: VaultStore): Vault
         })),
         safeDimensions: SAFE_DIMENSIONS,
         metrics: ALLOWED_METRICS,
+        // The raw dataset total, deliberately. Together with suppressedCells
+        // it lets a caller solve the global size histogram of withheld cells
+        // (how many are size 1, how many size 2) — but not which cells they
+        // are, so no individual is isolated. That any missing cell is under k
+        // is inherent to cell suppression; the approver's need to know the
+        // real dataset size outweighs the residual.
         rowCount: db.rowCount(),
         minGroupSize: MIN_GROUP_SIZE,
         maxReleaseRows: MAX_RELEASE_ROWS,
