@@ -6,7 +6,9 @@ A data-steward agent on TrueForge that can analyze sensitive synthetic records b
 
 Built for the TrueForge Agent Harness Hackathon (2026-08-24 → 2026-08-30). All data is synthetic.
 
-## How it works
+## How it works (target architecture)
+
+Each component below lands in its own pull request during the build window — see Status for what exists today.
 
 A data steward asks the agent for numbers from a support-ticket database that contains things nobody should export: emails, phone numbers, raw free text. The agent can help — but the raw data never passes through it, and release is not its decision to make.
 
