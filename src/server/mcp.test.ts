@@ -56,10 +56,21 @@ describe("vault MCP scaffold", () => {
     ]);
   });
 
-  it("marks only release_result destructive", async () => {
+  it("annotates every tool truthfully: destructive and read-only hints", async () => {
     const { tools } = await client.listTools();
+    // prepare_analysis persists a candidate, release_result transitions state;
+    // the other three never write.
+    const readOnly: Record<string, boolean> = {
+      describe_dataset: true,
+      prepare_analysis: false,
+      validate_release: true,
+      release_result: false,
+      render_safe_chart: true,
+    };
     for (const tool of tools) {
       expect(tool.annotations?.destructiveHint, tool.name).toBe(tool.name === "release_result");
+      expect(tool.annotations?.readOnlyHint, tool.name).toBe(readOnly[tool.name]);
+      expect(tool.annotations?.openWorldHint, tool.name).toBe(false);
     }
   });
 

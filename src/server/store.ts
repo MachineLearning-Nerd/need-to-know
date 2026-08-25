@@ -1,3 +1,4 @@
+import type { Sha256Hex } from "../contract/canonical.js";
 import type { Finding } from "../contract/findings.js";
 import type { ReleaseCandidate } from "../contract/validate.js";
 
@@ -27,8 +28,8 @@ export type AuditRecord = Readonly<{
 export type ReleaseReceipt = Readonly<{
   receiptId: string;
   queryId: string;
-  contractHash: string;
-  outputHash: string;
+  contractHash: Sha256Hex;
+  outputHash: Sha256Hex;
   datasetVersion: string;
   policyVersion: string;
 }>;

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { Sha256Hex } from "../contract/canonical.js";
 import { validateRelease } from "../contract/validate.js";
 import { openVaultDatabase, type VaultDatabase } from "../vault/database.js";
 import { CANARY, SMALL_CELL } from "../vault/seed.js";
@@ -381,8 +382,9 @@ describe("fail-closed hardening", () => {
     const store2 = createVaultStore();
     const receipt = {
       queryId: "q-1",
-      contractHash: "0".repeat(64),
-      outputHash: "0".repeat(64),
+      // The brand only exists at the type level; a test fixture may assert it.
+      contractHash: "0".repeat(64) as Sha256Hex,
+      outputHash: "0".repeat(64) as Sha256Hex,
       datasetVersion: "support-tickets-v1",
       policyVersion: "policy-v1",
     };

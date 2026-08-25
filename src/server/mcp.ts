@@ -61,7 +61,9 @@ function buildMcpServer(handlers: VaultToolHandlers): McpServer {
         dimensions: z.array(z.string()),
         metric: z.string(),
       },
-      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+      // Not read-only: preparing persists the candidate under a new queryId.
+      // Not destructive either — it only adds state, never transitions it.
+      annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false },
     },
     (input) => handlers.prepareAnalysis(input),
   );
