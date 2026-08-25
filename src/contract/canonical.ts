@@ -34,15 +34,50 @@ function write(value: unknown, seen: WeakSet<object>): string {
   if (seen.has(obj)) throw new CanonicalizeError("circular reference");
   seen.add(obj);
   try {
+    if (Object.getOwnPropertySymbols(obj).length > 0) {
+      throw new CanonicalizeError("symbol key");
+    }
     if (Array.isArray(obj)) {
-      return `[${obj.map((item) => write(item, seen)).join(",")}]`;
+      // Array.prototype.map skips holes, so a sparse array would serialize
+      // like a shorter one and collide with it — exactly the silent
+      // narrowing this serializer exists to refuse. Descriptor reads reject
+      // holes, accessors, and any own non-index property.
+      for (const name of Object.getOwnPropertyNames(obj)) {
+        if (name === "length") continue;
+        const index = Number(name);
+        if (
+          !Number.isInteger(index) ||
+          index < 0 ||
+          index >= obj.length ||
+          String(index) !== name
+        ) {
+          throw new CanonicalizeError("non-index array property");
+        }
+      }
+      const parts: string[] = [];
+      for (let index = 0; index < obj.length; index++) {
+        const descriptor = Object.getOwnPropertyDescriptor(obj, index);
+        if (descriptor === undefined) throw new CanonicalizeError("sparse array hole");
+        if (!("value" in descriptor) || !descriptor.enumerable) {
+          throw new CanonicalizeError("non-data array element");
+        }
+        parts.push(write(descriptor.value, seen));
+      }
+      return `[${parts.join(",")}]`;
     }
     if (Object.getPrototypeOf(obj) !== Object.prototype && Object.getPrototypeOf(obj) !== null) {
       throw new CanonicalizeError("non-plain object");
     }
-    const entries = Object.entries(obj)
-      .sort(([a], [b]) => (a < b ? -1 : 1))
-      .map(([key, item]) => `${JSON.stringify(key)}:${write(item, seen)}`);
+    const entries = Object.getOwnPropertyNames(obj)
+      .sort()
+      .map((key) => {
+        const descriptor = Object.getOwnPropertyDescriptor(obj, key);
+        // A hidden or computed key would be silently absent from the hash.
+        if (descriptor === undefined || !("value" in descriptor) || !descriptor.enumerable) {
+          throw new CanonicalizeError("non-data property");
+        }
+        return `${JSON.stringify(key)}:${write(descriptor.value, seen)}`;
+      });
     return `{${entries.join(",")}}`;
   } finally {
     seen.delete(obj);

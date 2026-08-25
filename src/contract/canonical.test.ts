@@ -35,6 +35,30 @@ describe("canonicalize", () => {
     cycle.self = cycle;
     expect(() => canonicalize(cycle)).toThrow(CanonicalizeError);
   });
+
+  it("fails closed on shapes whose content would be silently absent", () => {
+    // A one-hole array previously serialized as "[]" — the same bytes and
+    // hash as an actually empty array.
+    expect(() => canonicalize(new Array(1))).toThrow(CanonicalizeError);
+    // biome-ignore lint/suspicious/noSparseArray: the hole is the test subject
+    expect(() => canonicalize([1, , 2])).toThrow(CanonicalizeError);
+
+    const extra: unknown[] = [1];
+    Object.defineProperty(extra, "smuggled", { value: "x", enumerable: true });
+    expect(() => canonicalize(extra)).toThrow(CanonicalizeError);
+
+    const hidden: Record<string, unknown> = { a: 1 };
+    Object.defineProperty(hidden, "b", { value: 2, enumerable: false });
+    expect(() => canonicalize(hidden)).toThrow(CanonicalizeError);
+
+    const symbolic: Record<string | symbol, unknown> = { a: 1 };
+    symbolic[Symbol("hidden")] = 2;
+    expect(() => canonicalize(symbolic)).toThrow(CanonicalizeError);
+
+    const accessor: Record<string, unknown> = {};
+    Object.defineProperty(accessor, "a", { enumerable: true, get: () => 1 });
+    expect(() => canonicalize(accessor)).toThrow(CanonicalizeError);
+  });
 });
 
 describe("sha256Canonical", () => {
