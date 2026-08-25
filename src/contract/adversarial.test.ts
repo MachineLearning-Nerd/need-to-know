@@ -185,6 +185,32 @@ describe("hostile object shapes fail closed", () => {
     }
   });
 
+  it("rejects an own __proto__ key that would graft onto the snapshot prototype", () => {
+    // JSON.parse is the realistic delivery: it produces an own enumerable
+    // "__proto__" data property. Copying it by assignment would set the
+    // snapshot's prototype, making group_size an inherited attacker value
+    // with no own key — previously approved with valid hashes.
+    const row = JSON.parse(
+      '{"week":"2026-W32","region":"NA","ticket_count":12,"__proto__":{"group_size":12}}',
+    ) as Record<string, unknown>;
+    expect(validateRelease(makeCandidate({ rows: [row as never] })).status).toBe("needs_review");
+
+    const topLevel = JSON.parse(
+      `{${JSON.stringify(makeCandidate()).slice(1, -1)},"__proto__":{"smuggled":true}}`,
+    ) as Record<string, unknown>;
+    expect(validateRelease(topLevel).status).toBe("needs_review");
+  });
+
+  it("rejects index aliases whose values a snapshot would silently drop", () => {
+    for (const alias of ["00", " 1", "1e0", ""]) {
+      const rows: unknown[] = [...makeCandidate().rows];
+      Object.defineProperty(rows, alias, { value: "smuggled", enumerable: true });
+      expect(validateRelease(makeCandidate({ rows: rows as never })).status, alias).toBe(
+        "needs_review",
+      );
+    }
+  });
+
   it("rejects rows with a non-plain prototype outright", () => {
     const inherited = Object.assign(Object.create({ week: "2026-W32" }), {
       region: "NA",
