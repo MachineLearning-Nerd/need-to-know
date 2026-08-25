@@ -475,6 +475,10 @@ describe("fail-closed hardening", () => {
     expect(Object.isFrozen(recorded)).toBe(true);
     (original as { code: string }).code = "released_ok";
     expect(recorded?.code).toBe("evidence_mismatch");
+    // Freezing the returned array is cosmetic; returning a copy is the guard.
+    // Handing out the live log would let any consumer splice enforcement
+    // records away, which is the one fail-open the audit trail cannot survive.
+    expect(store.audits()).not.toBe(store.audits());
   });
 
   it("audits a thrown release error and never echoes internals", () => {

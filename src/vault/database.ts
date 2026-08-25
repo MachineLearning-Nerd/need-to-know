@@ -15,12 +15,14 @@ export type AggregateCell = Readonly<{
 // probe a sensitive column — a parameterized substring or equality check
 // against email or free_text would be a boolean oracle that leaks row contents
 // bit by bit. groupSize() is parameterized, but only over two safe dimensions.
-// It returns a raw pre-suppression count, which is exactly what the aggregate
-// surface withholds: where every category under a (week, region) pair is
-// suppressed, it is that withheld cell's precise size. It must stay
-// vault-internal and must never back a tool. aggregate() takes no caller
-// values at all: only identifiers checked against the frozen allowlists below
-// ever reach the SQL text.
+// It returns a raw pre-suppression count for a (week, region) pair, which is
+// exactly what the aggregate surface withholds: subtract the published
+// (week, region) rollup and the residual is how many rows are hidden under
+// that pair — and wherever only one category cell is suppressed there, the
+// residual is that cell's precise size, as low as a single individual in the
+// current dataset. It must stay vault-internal and must never back a tool.
+// aggregate() takes no caller values at all: only identifiers checked against
+// the frozen allowlists below ever reach the SQL text.
 export type VaultDatabase = {
   rowCount(): number;
   hasCanaryRow(): boolean;
