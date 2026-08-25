@@ -310,3 +310,37 @@ describe("release_result", () => {
     expect(store.audits().at(-1)?.findings).toContainEqual({ code: "evidence_mismatch" });
   });
 });
+
+describe("render_safe_chart", () => {
+  it("refuses to render anything that has not been released", () => {
+    const prepared = payload(
+      handlers.prepareAnalysis({
+        ...goodMission,
+        dimensions: ["week"],
+        metric: "avg_resolution_hours",
+      }),
+    ) as unknown as { queryId: string };
+    const early = handlers.renderSafeChart({ queryId: prepared.queryId });
+    expect(early.isError).toBe(true);
+    expect(payload(early).error).toBe("not_released");
+    expect(handlers.renderSafeChart({ queryId: "q-none" }).isError).toBe(true);
+  });
+
+  it("renders released aggregates without group sizes or sensitive values", () => {
+    const { queryId, contractHash, outputHash } = prepareValidated();
+    handlers.releaseResult({ queryId, contractHash, outputHash });
+    const chart = payload(handlers.renderSafeChart({ queryId })) as unknown as {
+      receiptId: string;
+      title: string;
+      rows: Array<Record<string, unknown>>;
+    };
+    expect(chart.receiptId).toMatch(/^r-\d+$/);
+    expect(chart.title).toBe("ticket_count by week, region");
+    for (const row of chart.rows) {
+      expect(row.group_size).toBeUndefined();
+    }
+    const text = JSON.stringify(chart);
+    expect(text).not.toContain(CANARY.email);
+    expect(text).not.toContain("@");
+  });
+});

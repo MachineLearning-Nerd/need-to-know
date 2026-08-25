@@ -10,10 +10,8 @@ import { GROUP_SIZE_FIELD, MAX_RELEASE_ROWS, MIN_GROUP_SIZE } from "../contract/
 import { validateRelease, verifyRelease } from "../contract/validate.js";
 import type { AggregateMetric, VaultDatabase } from "../vault/database.js";
 import { COLUMN_SENSITIVITY, DATASET_VERSION, SAFE_DIMENSIONS } from "../vault/schema.js";
-import { errorResult, jsonResult, type ToolResult, type VaultToolHandlers } from "./mcp.js";
+import { errorResult, jsonResult, type VaultToolHandlers } from "./mcp.js";
 import type { VaultStore } from "./store.js";
-
-const notImplemented = (): ToolResult => errorResult("not_implemented");
 
 // prepare_analysis and release_result must build rows identically: release
 // recomputes this from the live database and any difference from the stored
@@ -177,6 +175,31 @@ export function createVaultHandlers(db: VaultDatabase, store: VaultStore): Vault
       });
       return jsonResult({ receipt, columns: entry.candidate.columns, rows: releasedRows });
     },
-    renderSafeChart: notImplemented,
+    renderSafeChart: (input) => {
+      const entry = store.getPrepared(input.queryId);
+      if (entry === undefined) return errorResult("unknown_query_id");
+      // Charts render released data only: before a receipt exists the
+      // aggregate is still a candidate, not something to show around.
+      const receipt = store.getReceipt(input.queryId);
+      if (receipt === undefined) return errorResult("not_released");
+      const { candidate } = entry;
+      const rows = candidate.rows.map((row) => {
+        const projected: Record<string, string | number> = {};
+        for (const column of candidate.columns) {
+          const value = row[column];
+          if (value !== undefined) projected[column] = value;
+        }
+        return projected;
+      });
+      return jsonResult({
+        queryId: entry.queryId,
+        receiptId: receipt.receiptId,
+        title: `${candidate.queryPlan.metric} by ${candidate.queryPlan.dimensions.join(", ")}`,
+        dimensions: candidate.queryPlan.dimensions,
+        metric: candidate.queryPlan.metric,
+        columns: candidate.columns,
+        rows,
+      });
+    },
   };
 }
