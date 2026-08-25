@@ -1,4 +1,4 @@
-import type { Finding } from "./findings.js";
+import { clipDetail, type Finding } from "./findings.js";
 
 export const MIN_GROUP_SIZE = 3;
 export const MAX_RELEASE_ROWS = 50;
@@ -59,7 +59,7 @@ export function checkColumns(columns: readonly string[]): Finding[] {
   if (new Set(columns).size !== columns.length) findings.push({ code: "duplicate_column" });
   for (const column of columns) {
     if (!(ALLOWED_RELEASE_COLUMNS as readonly string[]).includes(column)) {
-      findings.push({ code: "column_not_allowlisted", detail: column });
+      findings.push({ code: "column_not_allowlisted", detail: clipDetail(column) });
     }
   }
   return findings;
@@ -82,7 +82,7 @@ export function checkRows(
   }
   const declared = new Set([...columns, GROUP_SIZE_FIELD]);
   rows.forEach((row, index) => {
-    const at = (field: string) => `row ${index}: ${field}`;
+    const at = (field: string) => clipDetail(`row ${index}: ${field}`);
     for (const field of Object.keys(row)) {
       if (!declared.has(field)) findings.push({ code: "row_field_undeclared", detail: at(field) });
     }

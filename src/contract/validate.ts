@@ -1,5 +1,5 @@
 import { type Sha256Hex, sha256Canonical } from "./canonical.js";
-import type { Finding } from "./findings.js";
+import { clipDetail, type Finding } from "./findings.js";
 import { authorizeMission } from "./policy.js";
 import { checkProvenance, checkQueryPlan, type Provenance, type QueryPlan } from "./queryPlan.js";
 import { checkColumns, checkRows, GROUP_SIZE_FIELD, MIN_GROUP_SIZE } from "./rows.js";
@@ -95,7 +95,7 @@ export function validateRelease(candidate: unknown): ValidationResult {
       const shown = parsed.columns.slice(0, 8).join(",");
       findings.push({
         code: "columns_plan_mismatch",
-        detail: parsed.columns.length > 8 ? `${shown},…` : shown,
+        detail: clipDetail(parsed.columns.length > 8 ? `${shown},…` : shown),
       });
     }
     findings.push(

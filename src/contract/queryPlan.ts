@@ -1,5 +1,5 @@
 import { DATASET_VERSION, SAFE_DIMENSIONS } from "../vault/schema.js";
-import type { Finding } from "./findings.js";
+import { clipDetail, type Finding } from "./findings.js";
 import { POLICY_VERSION } from "./policy.js";
 
 export const ALLOWED_SOURCE_DATASET = "support";
@@ -24,7 +24,7 @@ export type Provenance = {
 export function checkQueryPlan(plan: QueryPlan): Finding[] {
   const findings: Finding[] = [];
   if (plan.sourceDataset !== ALLOWED_SOURCE_DATASET) {
-    findings.push({ code: "plan_source_not_allowed", detail: plan.sourceDataset });
+    findings.push({ code: "plan_source_not_allowed", detail: clipDetail(plan.sourceDataset) });
   }
   if (plan.dimensions.length > SAFE_DIMENSIONS.length) {
     // Same cap rationale as too_many_columns: no valid plan exceeds the safe
@@ -39,12 +39,12 @@ export function checkQueryPlan(plan: QueryPlan): Finding[] {
     }
     for (const dimension of plan.dimensions) {
       if (!(SAFE_DIMENSIONS as readonly string[]).includes(dimension)) {
-        findings.push({ code: "plan_dimension_not_allowed", detail: dimension });
+        findings.push({ code: "plan_dimension_not_allowed", detail: clipDetail(dimension) });
       }
     }
   }
   if (!(ALLOWED_METRICS as readonly string[]).includes(plan.metric)) {
-    findings.push({ code: "plan_metric_not_allowed", detail: plan.metric });
+    findings.push({ code: "plan_metric_not_allowed", detail: clipDetail(plan.metric) });
   }
   if (plan.filters.length > 0) {
     findings.push({ code: "plan_filter_not_allowed", detail: String(plan.filters.length) });
@@ -63,19 +63,25 @@ export function checkProvenance(
 ): Finding[] {
   const findings: Finding[] = [];
   if (provenance.sourceDataset !== plan.sourceDataset) {
-    findings.push({ code: "provenance_source_mismatch", detail: provenance.sourceDataset });
+    findings.push({
+      code: "provenance_source_mismatch",
+      detail: clipDetail(provenance.sourceDataset),
+    });
   }
   if (provenance.datasetVersion !== DATASET_VERSION) {
     findings.push({
       code: "dataset_version_mismatch",
-      detail: `provenance: ${provenance.datasetVersion}`,
+      detail: clipDetail(`provenance: ${provenance.datasetVersion}`),
     });
   }
   if (datasetVersion !== DATASET_VERSION) {
-    findings.push({ code: "dataset_version_mismatch", detail: `candidate: ${datasetVersion}` });
+    findings.push({
+      code: "dataset_version_mismatch",
+      detail: clipDetail(`candidate: ${datasetVersion}`),
+    });
   }
   if (policyVersion !== POLICY_VERSION) {
-    findings.push({ code: "policy_version_mismatch", detail: policyVersion });
+    findings.push({ code: "policy_version_mismatch", detail: clipDetail(policyVersion) });
   }
   return findings;
 }

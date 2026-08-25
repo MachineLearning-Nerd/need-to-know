@@ -1,5 +1,14 @@
 export type Finding = { readonly code: FindingCode; readonly detail?: string };
 
+// Details echo caller-controlled strings into findings that end up in the
+// audit trail; unclipped, one megabyte-sized column name amplifies into
+// several megabytes of persisted detail across the findings it triggers.
+const MAX_DETAIL_LENGTH = 120;
+
+export function clipDetail(detail: string): string {
+  return detail.length > MAX_DETAIL_LENGTH ? `${detail.slice(0, MAX_DETAIL_LENGTH)}…` : detail;
+}
+
 export type FindingCode =
   // mission
   | "purpose_not_authorized"

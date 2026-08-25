@@ -127,6 +127,19 @@ describe("validateRelease", () => {
     }
   });
 
+  it("clips caller-controlled strings echoed into finding details", () => {
+    // Unclipped, one megabyte-sized column name amplified into ~4 MB of
+    // detail across the findings it triggers — audit-trail bloat.
+    const huge = `x${"y".repeat(1_000_000)}`;
+    const result = validateRelease(makeCandidate({ columns: ["week", "region", huge] }));
+    expect(result.status).toBe("denied");
+    if (result.status === "denied") {
+      for (const finding of result.findings) {
+        expect((finding.detail ?? "").length).toBeLessThanOrEqual(121);
+      }
+    }
+  });
+
   it("returns needs_review for malformed input instead of throwing", () => {
     for (const malformed of [null, 42, "release", {}, { purpose: "weekly support trend" }, []]) {
       const result = validateRelease(malformed);
