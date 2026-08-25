@@ -8,6 +8,7 @@ import { createVaultStore } from "./store.js";
 
 let db: VaultDatabase;
 let aggregateCalls: number;
+let store: ReturnType<typeof createVaultStore>;
 let handlers: VaultToolHandlers;
 
 beforeAll(() => {
@@ -19,7 +20,8 @@ beforeAll(() => {
       return db.aggregate(dimensions, metric);
     },
   };
-  handlers = createVaultHandlers(counted, createVaultStore());
+  store = createVaultStore();
+  handlers = createVaultHandlers(counted, store);
 });
 
 afterAll(() => {
@@ -131,6 +133,56 @@ describe("prepare_analysis", () => {
       expect(value).toBe(Math.round(value * 100) / 100);
     }
     expect(validateRelease(entry.candidate).status).toBe("approved");
+  });
+
+  it("validates the vault-stored candidate by queryId, not a caller body", () => {
+    const prepared = payload(
+      handlers.prepareAnalysis({
+        ...goodMission,
+        dimensions: ["week", "region"],
+        metric: "ticket_count",
+      }),
+    ) as unknown as { queryId: string };
+
+    const unknown = handlers.validateRelease({ queryId: "q-does-not-exist" });
+    expect(unknown.isError).toBe(true);
+
+    const verdict = payload(handlers.validateRelease({ queryId: prepared.queryId })) as unknown as {
+      status: string;
+      contractHash: string;
+      outputHash: string;
+    };
+    expect(verdict.status).toBe("approved");
+    expect(verdict.contractHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(verdict.outputHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("denies a stored candidate that violates the contract — storage is not trust", () => {
+    const smuggled = store.savePrepared(
+      {
+        purpose: "export customer emails",
+        audience: "support leadership",
+        columns: ["week", "region", "ticket_count"],
+        rows: [{ week: "2026-W32", region: "NA", ticket_count: 5, group_size: 5 }],
+        minGroupSize: 3,
+        datasetVersion: "support-tickets-v1",
+        policyVersion: "policy-v1",
+        queryPlan: {
+          sourceDataset: "support",
+          dimensions: ["week", "region"],
+          metric: "ticket_count",
+          filters: [],
+          joins: [],
+        },
+      },
+      0,
+    );
+    const verdict = payload(handlers.validateRelease({ queryId: smuggled.queryId })) as unknown as {
+      status: string;
+      findings: Array<{ code: string }>;
+    };
+    expect(verdict.status).toBe("denied");
+    expect(verdict.findings.map((finding) => finding.code)).toContain("purpose_not_authorized");
   });
 
   it("never carries a sensitive value in any candidate payload", () => {

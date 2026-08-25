@@ -6,6 +6,7 @@ import {
 } from "../contract/policy.js";
 import { ALLOWED_METRICS } from "../contract/queryPlan.js";
 import { GROUP_SIZE_FIELD, MAX_RELEASE_ROWS, MIN_GROUP_SIZE } from "../contract/rows.js";
+import { validateRelease } from "../contract/validate.js";
 import type { AggregateMetric, VaultDatabase } from "../vault/database.js";
 import { COLUMN_SENSITIVITY, DATASET_VERSION, SAFE_DIMENSIONS } from "../vault/schema.js";
 import { errorResult, jsonResult, type ToolResult, type VaultToolHandlers } from "./mcp.js";
@@ -88,7 +89,13 @@ export function createVaultHandlers(db: VaultDatabase, store: VaultStore): Vault
       );
       return jsonResult(entry);
     },
-    validateRelease: notImplemented,
+    validateRelease: (input) => {
+      // The candidate comes from the vault store, never the caller: what gets
+      // validated and hashed is exactly what prepare_analysis produced.
+      const entry = store.getPrepared(input.queryId);
+      if (entry === undefined) return errorResult("unknown_query_id");
+      return jsonResult({ queryId: entry.queryId, ...validateRelease(entry.candidate) });
+    },
     releaseResult: notImplemented,
     renderSafeChart: notImplemented,
   };
