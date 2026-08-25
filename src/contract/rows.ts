@@ -1,3 +1,5 @@
+import type { Finding } from "./findings.js";
+
 export const MIN_GROUP_SIZE = 3;
 export const MAX_RELEASE_ROWS = 50;
 
@@ -13,21 +15,6 @@ export const ALLOWED_RELEASE_COLUMNS = Object.freeze([
 
 // Per-row aggregation metadata: present on every candidate row, never released.
 export const GROUP_SIZE_FIELD = "group_size";
-
-export type Finding = { readonly code: FindingCode; readonly detail?: string };
-
-export type FindingCode =
-  | "no_columns"
-  | "duplicate_column"
-  | "column_not_allowlisted"
-  | "no_rows"
-  | "too_many_rows"
-  | "row_field_undeclared"
-  | "row_field_missing"
-  | "group_size_missing"
-  | "group_size_below_minimum"
-  | "value_not_releasable"
-  | "value_contains_contact_pattern";
 
 export function checkColumns(columns: readonly string[]): Finding[] {
   const findings: Finding[] = [];
