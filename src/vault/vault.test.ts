@@ -1,5 +1,8 @@
+import { DatabaseSync } from "node:sqlite";
+
 import { describe, expect, it } from "vitest";
 
+import * as vaultDatabase from "./database.js";
 import { openVaultDatabase } from "./database.js";
 import {
   COLUMN_SENSITIVITY,
@@ -8,7 +11,7 @@ import {
   SENSITIVE_COLUMNS,
   TICKETS_DDL,
 } from "./schema.js";
-import { CANARY, SMALL_CELL, seedRows } from "./seed.js";
+import { CANARY, REGIONS, SMALL_CELL, seedRows, WEEKS } from "./seed.js";
 
 describe("schema", () => {
   it("labels every ticket column exactly once", () => {
@@ -16,10 +19,15 @@ describe("schema", () => {
     expect(labeled.sort()).toEqual(Object.keys(COLUMN_SENSITIVITY).sort());
   });
 
-  it("declares every labeled column in the DDL", () => {
-    for (const column of Object.keys(COLUMN_SENSITIVITY)) {
-      expect(TICKETS_DDL).toContain(column);
-    }
+  it("creates exactly the labeled columns plus the internal id", () => {
+    const db = new DatabaseSync(":memory:");
+    db.exec(TICKETS_DDL);
+    const names = db
+      .prepare("SELECT name FROM pragma_table_info('tickets') ORDER BY cid")
+      .all()
+      .map((row) => String(row?.name));
+    db.close();
+    expect(names).toEqual(["id", ...Object.keys(COLUMN_SENSITIVITY)]);
   });
 
   it("labels identifiers and free text as sensitive", () => {
@@ -28,19 +36,29 @@ describe("schema", () => {
 });
 
 describe("seed", () => {
-  it("is deterministic across runs", () => {
+  it("is deterministic across runs and pinned to the recorded fixture", () => {
     expect(seedRows()).toEqual(seedRows());
+    // Literal first row guards against seed drift across processes, not just within one.
+    expect(seedRows()).toHaveLength(62);
+    expect(seedRows()[0]).toEqual({
+      customer_id: "CUST-1000",
+      email: "customer1000@example.com",
+      phone: "+1-555-1000",
+      free_text: "Ticket about login filed by customer 1000.",
+      week: "2026-W30",
+      region: "NA",
+      category: "login",
+      resolution_hours: 21.2,
+    });
   });
 
-  it("keeps every bulk group at k >= 3", () => {
-    const sizes = new Map<string, number>();
-    for (const row of seedRows()) {
-      const key = `${row.week}|${row.region}`;
-      sizes.set(key, (sizes.get(key) ?? 0) + 1);
-    }
-    for (const [key, size] of sizes) {
-      if (key === `${SMALL_CELL.week}|${SMALL_CELL.region}`) continue;
-      expect(size, key).toBeGreaterThanOrEqual(3);
+  it("keeps every bulk week x region group at k >= 3", () => {
+    const rows = seedRows();
+    for (const week of WEEKS) {
+      for (const region of REGIONS) {
+        const size = rows.filter((row) => row.week === week && row.region === region).length;
+        expect(size, `${week}|${region}`).toBeGreaterThanOrEqual(3);
+      }
     }
   });
 
@@ -82,5 +100,7 @@ describe("vault database", () => {
     const db = openVaultDatabase();
     expect(Object.keys(db).sort()).toEqual(["close", "groupSize", "hasCanaryRow", "rowCount"]);
     db.close();
+    // Module-level lock: adding any new export (e.g. a row dump) fails here too.
+    expect(Object.keys(vaultDatabase).sort()).toEqual(["openVaultDatabase"]);
   });
 });

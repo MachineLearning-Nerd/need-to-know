@@ -13,8 +13,8 @@ export type VaultDatabase = {
   close(): void;
 };
 
-export function openVaultDatabase(location = ":memory:"): VaultDatabase {
-  const db = new DatabaseSync(location);
+export function openVaultDatabase(): VaultDatabase {
+  const db = new DatabaseSync(":memory:");
   db.exec(TICKETS_DDL);
 
   const insert = db.prepare(
