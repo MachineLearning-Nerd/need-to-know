@@ -193,6 +193,11 @@ export function createVaultHandlers(db: VaultDatabase, store: VaultStore): Vault
         }
       }
       if (!(ALLOWED_METRICS as readonly string[]).includes(input.metric)) {
+        // Naming a sensitive column here is the same reach as naming it in
+        // dimensions. The malformed-plan denials above stay unaudited on
+        // purpose: they are client bugs, not attempts on sensitive columns,
+        // and auditing them would grow the uncapped log for nothing.
+        store.recordAudit("-", "metric_not_allowed");
         return errorResult("metric_not_allowed", input.metric.slice(0, 120));
       }
 

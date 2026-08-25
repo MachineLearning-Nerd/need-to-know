@@ -426,6 +426,13 @@ describe("fail-closed hardening", () => {
     });
     expect(store.audits().at(-1)?.outcome).toBe("dimension_not_allowed");
 
+    // Every sensitive column reachable through the metric slot audits too —
+    // the same reach, expressed in the adjacent field.
+    for (const metric of ["email", "phone", "customer_id", "free_text"]) {
+      handlers.prepareAnalysis({ ...goodMission, dimensions: ["week"], metric });
+      expect(store.audits().at(-1)?.outcome, metric).toBe("metric_not_allowed");
+    }
+
     const prepared = payload(
       handlers.prepareAnalysis({ ...goodMission, dimensions: ["week"], metric: "ticket_count" }),
     ) as unknown as { queryId: string };
