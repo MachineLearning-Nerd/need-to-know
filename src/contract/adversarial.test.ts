@@ -90,6 +90,49 @@ describe("canary containment", () => {
   });
 });
 
+describe("hostile object shapes fail closed", () => {
+  it("returns needs_review when a row property accessor throws", () => {
+    const trap: Record<string, unknown> = { region: "NA", ticket_count: 1, group_size: 12 };
+    Object.defineProperty(trap, "week", {
+      enumerable: true,
+      get() {
+        throw new Error("hostile getter");
+      },
+    });
+    const result = validateRelease(makeCandidate({ rows: [trap as never] }));
+    expect(result.status).toBe("needs_review");
+  });
+
+  it("rejects unknown top-level, plan, and provenance keys", () => {
+    const base = makeCandidate();
+    const cases = [
+      { ...base, extra: "smuggled" },
+      { ...base, queryPlan: { ...base.queryPlan, hint: "x" } },
+      { ...base, provenance: { ...base.provenance, note: "x" } },
+    ];
+    for (const candidate of cases) {
+      const result = validateRelease(candidate);
+      expect(result.status).toBe("needs_review");
+      if (result.status === "needs_review") {
+        expect(result.findings).toEqual([{ code: "candidate_malformed" }]);
+      }
+    }
+  });
+
+  it("treats prototype-inherited columns as missing", () => {
+    const inherited = Object.assign(Object.create({ week: "2026-W32" }), {
+      region: "NA",
+      ticket_count: 1,
+      group_size: 12,
+    }) as Record<string, string | number>;
+    const result = validateRelease(makeCandidate({ rows: [inherited] }));
+    expect(result.status).toBe("denied");
+    if (result.status === "denied") {
+      expect(result.findings.map((finding) => finding.code)).toContain("row_field_missing");
+    }
+  });
+});
+
 describe("mission mismatch matrix", () => {
   const purposes = [ALLOWED_PURPOSE, "weekly support trends", "export customer emails"];
   const audiences = [ALLOWED_AUDIENCE, "Support Leadership", "the public"];

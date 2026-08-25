@@ -44,7 +44,11 @@ export function checkRows(
       if (!declared.has(field)) findings.push({ code: "row_field_undeclared", detail: at(field) });
     }
     for (const column of columns) {
-      if (!(column in row)) findings.push({ code: "row_field_missing", detail: at(column) });
+      // Own-property check: a value inherited via the prototype chain would
+      // skip the own-enumerable value checks above, so it does not count.
+      if (!Object.hasOwn(row, column)) {
+        findings.push({ code: "row_field_missing", detail: at(column) });
+      }
     }
     const groupSize = row[GROUP_SIZE_FIELD];
     if (typeof groupSize !== "number" || !Number.isInteger(groupSize)) {

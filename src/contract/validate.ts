@@ -47,33 +47,36 @@ export function validateRelease(candidate: unknown): ValidationResult {
     return { status: "needs_review", findings: [{ code: "candidate_malformed" }] };
   }
 
-  const findings: Finding[] = [];
-  const mission = authorizeMission(parsed.purpose, parsed.audience);
-  if (!mission.authorized) findings.push(...mission.reasons.map((code) => ({ code })));
-  if (parsed.minGroupSize !== MIN_GROUP_SIZE) {
-    findings.push({ code: "min_group_size_mismatch", detail: String(parsed.minGroupSize) });
-  }
-  findings.push(...checkColumns(parsed.columns));
-  findings.push(...checkRows(parsed.rows, parsed.columns));
-  findings.push(...checkQueryPlan(parsed.queryPlan));
-  findings.push(
-    ...checkProvenance(
-      parsed.provenance,
-      parsed.queryPlan,
-      parsed.datasetVersion,
-      parsed.policyVersion,
-    ),
-  );
-
-  if (findings.length > 0) return { status: "denied", findings: Object.freeze(findings) };
+  // The whole check-and-hash phase is guarded: property accessors on hostile
+  // objects (getters, proxies) can throw from inside any check, and an escaped
+  // exception is not a fail-closed verdict.
   try {
+    const findings: Finding[] = [];
+    const mission = authorizeMission(parsed.purpose, parsed.audience);
+    if (!mission.authorized) findings.push(...mission.reasons.map((code) => ({ code })));
+    if (parsed.minGroupSize !== MIN_GROUP_SIZE) {
+      findings.push({ code: "min_group_size_mismatch", detail: String(parsed.minGroupSize) });
+    }
+    findings.push(...checkColumns(parsed.columns));
+    findings.push(...checkRows(parsed.rows, parsed.columns));
+    findings.push(...checkQueryPlan(parsed.queryPlan));
+    findings.push(
+      ...checkProvenance(
+        parsed.provenance,
+        parsed.queryPlan,
+        parsed.datasetVersion,
+        parsed.policyVersion,
+      ),
+    );
+
+    if (findings.length > 0) return { status: "denied", findings: Object.freeze(findings) };
     return {
       status: "approved",
       contractHash: contractHashOf(parsed),
       outputHash: outputHashOf(parsed),
     };
   } catch {
-    return { status: "needs_review", findings: [{ code: "candidate_malformed", detail: "hash" }] };
+    return { status: "needs_review", findings: [{ code: "candidate_malformed" }] };
   }
 }
 
@@ -93,12 +96,35 @@ export function verifyRelease(
   return result;
 }
 
+const CANDIDATE_KEYS = Object.freeze([
+  "purpose",
+  "audience",
+  "columns",
+  "rows",
+  "minGroupSize",
+  "datasetVersion",
+  "policyVersion",
+  "queryPlan",
+  "provenance",
+] as const);
+const PLAN_KEYS = Object.freeze(["sourceDataset", "dimensions", "metric", "filters", "joins"]);
+const PROVENANCE_KEYS = Object.freeze(["sourceDataset", "datasetVersion", "queryId"]);
+
+// Unknown keys are rejected, not ignored: the contract hash must cover exactly
+// what the rules inspected, so a field no rule looked at can never be part of
+// what the approver ends up authorizing.
+function hasExactKeys(record: Record<string, unknown>, keys: readonly string[]): boolean {
+  const own = Object.keys(record);
+  return own.length === keys.length && own.every((key) => keys.includes(key));
+}
+
 function parseCandidate(value: unknown): ReleaseCandidate | null {
   if (typeof value !== "object" || value === null) return null;
   const record = value as Record<string, unknown>;
   const plan = record.queryPlan;
   const provenance = record.provenance;
   if (
+    !hasExactKeys(record, CANDIDATE_KEYS) ||
     typeof record.purpose !== "string" ||
     typeof record.audience !== "string" ||
     !isStringArray(record.columns) ||
@@ -129,6 +155,7 @@ function isQueryPlan(value: unknown): value is QueryPlan {
   if (typeof value !== "object" || value === null) return false;
   const plan = value as Record<string, unknown>;
   return (
+    hasExactKeys(plan, PLAN_KEYS) &&
     typeof plan.sourceDataset === "string" &&
     isStringArray(plan.dimensions) &&
     typeof plan.metric === "string" &&
@@ -141,6 +168,7 @@ function isProvenance(value: unknown): value is Provenance {
   if (typeof value !== "object" || value === null) return false;
   const provenance = value as Record<string, unknown>;
   return (
+    hasExactKeys(provenance, PROVENANCE_KEYS) &&
     typeof provenance.sourceDataset === "string" &&
     typeof provenance.datasetVersion === "string" &&
     typeof provenance.queryId === "string"
