@@ -212,6 +212,10 @@ export function startVaultMcpServer(
         close: () =>
           new Promise((done, fail) => {
             httpServer.close((error) => (error ? fail(error) : done()));
+            // close() alone waits for every open connection, so a socket that
+            // connected and never completed a request — silent or slowloris —
+            // keeps the vault alive indefinitely. Shutdown is not negotiable.
+            httpServer.closeAllConnections();
           }),
       });
     });

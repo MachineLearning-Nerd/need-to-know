@@ -1,4 +1,5 @@
 import { request as httpRequest } from "node:http";
+import { connect } from "node:net";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
@@ -164,6 +165,20 @@ describe("vault MCP scaffold", () => {
     // status check would also pass on an unrelated 500.
     expect(sameOrigin.status).not.toBe(403);
     expect(await sameOrigin.text()).not.toContain("forbidden_origin");
+  });
+
+  it("shuts down even while a socket holds an incomplete request", async () => {
+    const held = await startVaultMcpServer(0, stubHandlers);
+    const socket = connect(held.port, "localhost");
+    socket.on("error", () => undefined);
+    await new Promise<void>((resolve) => socket.once("connect", () => resolve()));
+    socket.write("POST /mcp HTTP/1.1\r\nHost: local");
+    const started = Date.now();
+    await held.close();
+    // Without closeAllConnections this never resolves: close() waits on every
+    // open connection, and this one never finishes its request.
+    expect(Date.now() - started).toBeLessThan(2000);
+    socket.destroy();
   });
 
   it("refuses GET so no caller can pin an open stream", async () => {
