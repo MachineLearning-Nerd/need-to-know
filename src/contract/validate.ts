@@ -31,7 +31,11 @@ export type ValidationResult =
 // The contract hash covers everything the approver authorizes; the output hash
 // covers exactly the rows that would be released. Both recompute from the
 // candidate itself, so any post-validation mutation changes the hash.
-export function contractHashOf(candidate: ReleaseCandidate): Sha256Hex {
+// Not exported: both hash functions assume a parsed snapshot. On a raw
+// caller object the projection would silently drop a column named
+// "__proto__" and read through accessors — callers get hashes only from
+// validateRelease/verifyRelease, which parse first.
+function contractHashOf(candidate: ReleaseCandidate): Sha256Hex {
   const { rows, ...contract } = candidate;
   // Group sizes are enforcement evidence: never released, but part of what the
   // approver authorized — regrouping the same output after approval (e.g. 12
@@ -43,7 +47,7 @@ export function contractHashOf(candidate: ReleaseCandidate): Sha256Hex {
 // The output hash covers the rows projected to the declared columns — the
 // exact released content. group_size is enforcement metadata, never released,
 // so it must not shift the hash the approver signs off on.
-export function outputHashOf(candidate: ReleaseCandidate): Sha256Hex {
+function outputHashOf(candidate: ReleaseCandidate): Sha256Hex {
   return sha256Canonical(
     candidate.rows.map((row) => {
       const projected: Record<string, string | number> = {};
@@ -72,7 +76,7 @@ export function validateRelease(candidate: unknown): ValidationResult {
     if (parsed === null) {
       // Malformed input is not a policy verdict — it is an unclassifiable
       // request, so it fails closed as needs_review rather than denied.
-      return { status: "needs_review", findings: [{ code: "candidate_malformed" }] };
+      return { status: "needs_review", findings: Object.freeze([{ code: "candidate_malformed" }]) };
     }
 
     const findings: Finding[] = [];
@@ -114,7 +118,7 @@ export function validateRelease(candidate: unknown): ValidationResult {
       outputHash: outputHashOf(parsed),
     };
   } catch {
-    return { status: "needs_review", findings: [{ code: "candidate_malformed" }] };
+    return { status: "needs_review", findings: Object.freeze([{ code: "candidate_malformed" }]) };
   }
 }
 

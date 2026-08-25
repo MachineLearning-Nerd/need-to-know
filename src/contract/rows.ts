@@ -87,8 +87,8 @@ export function checkRows(
       if (!declared.has(field)) findings.push({ code: "row_field_undeclared", detail: at(field) });
     }
     for (const column of columns) {
-      // Own-property check: a value inherited via the prototype chain would
-      // skip the own-enumerable value checks above, so it does not count.
+      // Every declared column must exist on the row itself: absence would
+      // otherwise release as an implicit blank the value checks never saw.
       if (!Object.hasOwn(row, column)) {
         findings.push({ code: "row_field_missing", detail: at(column) });
       }
