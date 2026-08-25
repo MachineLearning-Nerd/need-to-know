@@ -76,6 +76,31 @@ describe("canary containment", () => {
     }
   });
 
+  it("denies relabeled free text and identifiers via column value domains", () => {
+    const smuggles: ReadonlyArray<Record<string, string | number>> = [
+      { week: CANARY.freeText, region: "NA", ticket_count: 1, group_size: 12 },
+      {
+        week: "2026-W32",
+        region: "NA" /* domain ok */,
+        ticket_count: 1,
+        group_size: 12,
+        category: "CUST-1000",
+      } as never,
+      { week: "2026-W32", region: "CUST-1000", ticket_count: 1, group_size: 12 },
+    ];
+    for (const [index, row] of smuggles.entries()) {
+      const columns = Object.keys(row).filter((key) => key !== "group_size");
+      const result = validateRelease(makeCandidate({ rows: [row], columns }));
+      expect(result.status, `smuggle ${index}`).toBe("denied");
+    }
+    const stringMetric = validateRelease(
+      makeCandidate({
+        rows: [{ week: "2026-W32", region: "NA", ticket_count: "12" as never, group_size: 12 }],
+      }),
+    );
+    expect(stringMetric.status).toBe("denied");
+  });
+
   it("denies canary free text because free_text can never be declared", () => {
     const result = validateRelease(
       makeCandidate({

@@ -16,6 +16,22 @@ export const ALLOWED_RELEASE_COLUMNS = Object.freeze([
 // Per-row aggregation metadata: present on every candidate row, never released.
 export const GROUP_SIZE_FIELD = "group_size";
 
+export type AllowedReleaseColumn = (typeof ALLOWED_RELEASE_COLUMNS)[number];
+
+// Every releasable column has a closed value domain. A safe-dimension column
+// is not a free string slot: without this, raw identifiers or free text could
+// cross the boundary relabeled as "week" or "region".
+const COLUMN_DOMAINS: Readonly<Record<AllowedReleaseColumn, (value: unknown) => boolean>> =
+  Object.freeze({
+    week: (value) => typeof value === "string" && /^\d{4}-W\d{2}$/.test(value),
+    region: (value) => typeof value === "string" && /^[A-Z]{2,8}$/.test(value),
+    category: (value) => typeof value === "string" && /^[a-z][a-z_]{0,31}$/.test(value),
+    ticket_count: (value) =>
+      typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 1_000_000,
+    avg_resolution_hours: (value) =>
+      typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100_000,
+  });
+
 export function checkColumns(columns: readonly string[]): Finding[] {
   const findings: Finding[] = [];
   if (columns.length === 0) findings.push({ code: "no_columns" });
@@ -57,6 +73,10 @@ export function checkRows(
       findings.push({ code: "group_size_below_minimum", detail: `row ${index}: ${groupSize}` });
     }
     for (const [field, value] of Object.entries(row)) {
+      if (Object.hasOwn(COLUMN_DOMAINS, field)) {
+        const inDomain = COLUMN_DOMAINS[field as AllowedReleaseColumn](value);
+        if (!inDomain) findings.push({ code: "value_out_of_domain", detail: at(field) });
+      }
       if (typeof value === "number") {
         if (!Number.isFinite(value))
           findings.push({ code: "value_not_releasable", detail: at(field) });
