@@ -1,0 +1,162 @@
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+
+import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
+import { z } from "zod";
+
+// The vault's public surface is exactly these five tools — no raw-row query
+// tool exists, so raw rows cannot leave the vault through any request shape.
+export type ToolResult = {
+  readonly content: Array<{ readonly type: "text"; readonly text: string }>;
+  readonly isError?: boolean;
+};
+
+export type VaultToolHandlers = {
+  describeDataset(): ToolResult;
+  prepareAnalysis(input: {
+    purpose: string;
+    audience: string;
+    dimensions: string[];
+    metric: string;
+  }): ToolResult;
+  validateRelease(input: { queryId: string }): ToolResult;
+  releaseResult(input: { queryId: string; contractHash: string; outputHash: string }): ToolResult;
+  renderSafeChart(input: { queryId: string }): ToolResult;
+};
+
+export function jsonResult(value: unknown): ToolResult {
+  return { content: [{ type: "text", text: JSON.stringify(value) }] };
+}
+
+export function errorResult(code: string, detail?: string): ToolResult {
+  return {
+    content: [{ type: "text", text: JSON.stringify({ error: code, detail }) }],
+    isError: true,
+  };
+}
+
+function buildMcpServer(handlers: VaultToolHandlers): McpServer {
+  const server = new McpServer({ name: "need-to-know-vault", version: "0.1.0" });
+
+  server.registerTool(
+    "describe_dataset",
+    {
+      description:
+        "Schema, sensitivity labels, and safe row counts for the support-tickets dataset. Never returns row values.",
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    },
+    () => handlers.describeDataset(),
+  );
+
+  server.registerTool(
+    "prepare_analysis",
+    {
+      description:
+        "Authorize a mission and run an allowlisted aggregate plan inside the vault. Returns a bounded release candidate keyed by queryId; small cells are suppressed before anything leaves.",
+      inputSchema: {
+        purpose: z.string(),
+        audience: z.string(),
+        dimensions: z.array(z.string()),
+        metric: z.string(),
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    },
+    (input) => handlers.prepareAnalysis(input),
+  );
+
+  server.registerTool(
+    "validate_release",
+    {
+      description:
+        "Run the deterministic ReleaseContract over the vault-stored candidate for a queryId. Returns the verdict, findings, and contract/output hashes.",
+      inputSchema: { queryId: z.string() },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    },
+    (input) => handlers.validateRelease(input),
+  );
+
+  server.registerTool(
+    "release_result",
+    {
+      description:
+        "Release the approved aggregate for a queryId. Revalidates the vault-stored candidate and both hashes at execution time; any mismatch is denied with an audit record and zero release side effects.",
+      inputSchema: {
+        queryId: z.string(),
+        contractHash: z.string(),
+        outputHash: z.string(),
+      },
+      annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false },
+    },
+    (input) => handlers.releaseResult(input),
+  );
+
+  server.registerTool(
+    "render_safe_chart",
+    {
+      description:
+        "Chart-ready view of a released aggregate for a queryId. Only works after a successful release.",
+      inputSchema: { queryId: z.string() },
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
+    },
+    (input) => handlers.renderSafeChart(input),
+  );
+
+  return server;
+}
+
+export type RunningVaultServer = {
+  readonly port: number;
+  close(): Promise<void>;
+};
+
+// Stateless transport, fresh server per request: tool calls are independent
+// and all durable state lives in the vault store, so there is no MCP session
+// to manage and nothing for a stale session to leak.
+export function startVaultMcpServer(
+  port: number,
+  handlers: VaultToolHandlers,
+): Promise<RunningVaultServer> {
+  const httpServer = createServer((request, response) => {
+    if (request.url !== "/mcp") {
+      response.writeHead(404, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "not_found" }));
+      return;
+    }
+    const server = buildMcpServer(handlers);
+    // No sessionIdGenerator: stateless mode — all durable state lives in the
+    // vault store, so there is no MCP session for a stale transport to leak.
+    const transport = new StreamableHTTPServerTransport({ enableJsonResponse: true });
+    response.on("close", () => {
+      void transport.close();
+      void server.close();
+    });
+    server
+      // The SDK's transport classes type optional callbacks as `| undefined`
+      // getters, which exactOptionalPropertyTypes rejects structurally even
+      // though the runtime shape matches — confine the mismatch to this cast.
+      .connect(transport as unknown as Transport)
+      .then(() => transport.handleRequest(request, response))
+      .catch(() => {
+        if (!response.headersSent) {
+          response.writeHead(500, { "content-type": "application/json" });
+        }
+        response.end(JSON.stringify({ error: "internal_error" }));
+      });
+  });
+
+  return new Promise((resolve, reject) => {
+    httpServer.once("error", reject);
+    httpServer.listen(port, () => {
+      const address = httpServer.address() as AddressInfo;
+      resolve({
+        port: address.port,
+        close: () =>
+          new Promise((done, fail) => {
+            httpServer.close((error) => (error ? fail(error) : done()));
+          }),
+      });
+    });
+  });
+}
