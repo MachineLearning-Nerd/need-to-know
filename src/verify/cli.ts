@@ -33,8 +33,9 @@ function readInput(args: string[]): string {
   if (filePath !== undefined && filePath !== "-") {
     return readFileSync(filePath, "utf8");
   }
-  // Read from stdin synchronously.
-  return readFileSync("/dev/stdin", "utf8");
+  // Read from stdin synchronously — file descriptor 0, not /dev/stdin,
+  // which does not exist on Windows.
+  return readFileSync(0, "utf8");
 }
 
 function main(args: string[]): void {

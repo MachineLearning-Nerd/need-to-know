@@ -193,6 +193,25 @@ export function verifyReceipt(value: unknown): VerifyResult {
 
     // verdict.status === "approved" — both hashes match the recomputed values.
 
+    // The hashes bind the receipt to the candidate's CONTENT; these three
+    // fields bind it to the candidate's IDENTITY. Without them a receipt
+    // naming the wrong query or versions would still verify. receiptId has no
+    // candidate-side counterpart and stays an unverified display field.
+    const candidateRecord = snapshotRecord(candidate);
+    const provenance = candidateRecord === null ? null : snapshotRecord(candidateRecord.provenance);
+    if (
+      candidateRecord === null ||
+      provenance === null ||
+      candidateRecord.datasetVersion !== receipt.datasetVersion ||
+      candidateRecord.policyVersion !== receipt.policyVersion ||
+      provenance.queryId !== receipt.queryId
+    ) {
+      return {
+        outcome: "receipt_metadata_mismatch",
+        detail: "receipt queryId or versions do not match the verified candidate",
+      };
+    }
+
     // Canary scan on the candidate's released rows (projected by contract columns).
     // validateRelease already parsed a frozen snapshot, so we re-run the projection
     // directly on the candidate object via JSON serialization — this is safe because

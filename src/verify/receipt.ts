@@ -6,6 +6,8 @@ import type { Sha256Hex } from "../contract/canonical.js";
 // authenticate origin or prevent a party from fabricating both fields together.
 export type VerifiableReceipt = {
   readonly receipt: {
+    // Display field only: nothing candidate-side can corroborate a receiptId,
+    // so the verifier reports it back but never treats it as verified.
     readonly receiptId: string;
     readonly queryId: string;
     readonly contractHash: Sha256Hex;
@@ -28,6 +30,7 @@ export type VerifyOutcome =
   | "contract_hash_mismatch"
   | "output_hash_mismatch"
   | "candidate_denied"
+  | "receipt_metadata_mismatch"
   | "canary_in_rows"
   | "events_malformed"
   | "approval_missing"
