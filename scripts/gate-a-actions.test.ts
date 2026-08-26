@@ -3,11 +3,32 @@ import { describe, expect, it } from "vitest";
 import { ALLOWED_AUDIENCE, ALLOWED_PURPOSE } from "../src/contract/policy.js";
 import { seedRows } from "../src/vault/seed.js";
 import {
+  askUqPrecedesApproval,
   exercisedQuestionAndApproval,
   GATE_A_USER_MESSAGE,
   gateABoundaryFailures,
   pendingSessionInput,
 } from "./gate-a-actions.js";
+
+describe("askUqPrecedesApproval", () => {
+  const question = { type: "tool.response_required" };
+  const approval = { type: "tool.approval_required" };
+  const noise = { type: "model.message" };
+
+  it("passes when the audience question pauses before the approval gate", () => {
+    expect(askUqPrecedesApproval([noise, question, noise, approval])).toBe(true);
+  });
+
+  it("fails when the approval gate arrives before any question", () => {
+    expect(askUqPrecedesApproval([approval, question])).toBe(false);
+  });
+
+  it("fails when either pause never happened", () => {
+    expect(askUqPrecedesApproval([question, noise])).toBe(false);
+    expect(askUqPrecedesApproval([noise, approval])).toBe(false);
+    expect(askUqPrecedesApproval([])).toBe(false);
+  });
+});
 
 describe("pendingSessionInput", () => {
   it("asks for only the audience that the deterministic driver answers", () => {

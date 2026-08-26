@@ -28,6 +28,7 @@ import { listSessionTurnIds, type PersistedEvent } from "../src/verify/events.js
 import { loadLiveSessionEvidence } from "../src/verify/live.js";
 import { verifyReceipt } from "../src/verify/verify.js";
 import {
+  askUqPrecedesApproval,
   exercisedQuestionAndApproval,
   GATE_A_USER_MESSAGE,
   type GateActionInput,
@@ -156,6 +157,10 @@ async function main(): Promise<void> {
       exercisedQuestionAndApproval(denied.approvalPauses, denied.questionPauses),
       `deny path exercised AskUQ (${denied.questionPauses}x) and approval (${denied.approvalPauses}x)`,
     );
+    check(
+      askUqPrecedesApproval(denied.events),
+      "deny path: the audience question paused the session before the approval gate",
+    );
     const releasedAfterDeny = store.audits().filter((record) => record.outcome === "released");
     check(releasedAfterDeny.length === 0, "deny path: zero release transitions in the vault");
     check(
@@ -168,6 +173,10 @@ async function main(): Promise<void> {
     check(
       exercisedQuestionAndApproval(allowed.approvalPauses, allowed.questionPauses),
       `allow path exercised AskUQ (${allowed.questionPauses}x) and approval (${allowed.approvalPauses}x)`,
+    );
+    check(
+      askUqPrecedesApproval(allowed.events),
+      "allow path: the audience question paused the session before the approval gate",
     );
     const released = store.audits().filter((record) => record.outcome === "released");
     check(released.length === 1, `allow path: exactly one release transition (${released.length})`);

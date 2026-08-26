@@ -92,3 +92,12 @@ export function exercisedQuestionAndApproval(
 ): boolean {
   return approvalPauses >= 1 && questionPauses >= 1;
 }
+
+// The missing-audience question must pause the session BEFORE the release
+// approval does: an agent that reaches the gated call without completing the
+// mission tuple skipped Ask User Questions, not just reordered it.
+export function askUqPrecedesApproval(events: readonly GateStreamEvent[]): boolean {
+  const question = events.findIndex((event) => event.type === "tool.response_required");
+  const approval = events.findIndex((event) => event.type === "tool.approval_required");
+  return question !== -1 && approval !== -1 && question < approval;
+}

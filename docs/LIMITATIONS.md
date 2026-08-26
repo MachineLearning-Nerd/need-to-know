@@ -32,6 +32,20 @@ gate run artifacts rather than in a committed record. The published clean-run
 records planned for Phase 9 will durably record deny-path session and turn IDs
 alongside verifier output.
 
+## Subagents are disabled, deliberately
+
+The original design called for advisory subagents (planner, privacy
+reviewer, evidence reviewer). TrueForge 0.1.4 child agents inherit the
+root's full tool set — including the vault MCP tools — so a child could
+trigger `release_result`, and no narrowed-permission claim would be true.
+Rather than prompt-shaping children and sampling their behaviour over
+repeated runs, this deployment removes the surface: the manifest disables
+`dynamic_sub_agents`, the prompt forbids creating them, and the verifier
+independently rejects any release chain whose calls, approval gate, or user
+decision sit outside the root thread (`approval_source_mismatch`). The
+root-only guarantee is therefore enforced deterministically on every
+verified bundle instead of demonstrated statistically.
+
 ## Offline verification is weaker than live
 
 `verify-receipt` without `TRUEFORGE_BASE_URL` checks the bundle's embedded
