@@ -474,7 +474,9 @@ describe("fail-closed hardening", () => {
     const released = payload(
       handlers2.prepareAnalysis({ ...goodMission, dimensions: ["week"], metric: "ticket_count" }),
     ) as unknown as { queryId: string };
-    const verdict = payload(handlers2.validateRelease({ queryId: released.queryId })) as unknown as {
+    const verdict = payload(
+      handlers2.validateRelease({ queryId: released.queryId }),
+    ) as unknown as {
       contractHash: string;
       outputHash: string;
     };
