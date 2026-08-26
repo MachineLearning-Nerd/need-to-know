@@ -86,6 +86,6 @@ Phase 5 of the build window complete. All five components are wired:
 - **Phase 2** - Deterministic ReleaseContract library: allowlists, group-size enforcement, canonical hashing.
 - **Phase 3** - Vault MCP server: five-tool boundary (describe, prepare, chart, validate, release). No raw-row tool.
 - **Phase 4** - TrueForge agent wiring: root prompt, Ask User Questions, pinned-valid OpenUI clearance/denial/receipt cards, and `require_approval_for_tools: ["release_result"]`.
-- **Phase 5** - Session-bound `verify-receipt` evidence: live token-paginated event fetch, exact approval/release witness checks, and canary/raw-boundary gates.
+- **Phase 5** - Session-bound `verify-receipt` evidence: live token-paginated event fetch, exact approval/release witness checks, and canary/raw-boundary gates. The verifier ships 89 dedicated tests (53 verify, 16 event-fetch, 10 live-session, 10 boundary) covering the full fail-closed enumeration: malformed receipts, missing/unavailable/partial events, unknown event types, mismatched session/turn IDs, hash mismatches, approval-ordering violations, duplicate approval and decision events, and canary presence.
 
 Dynamic subagents are deliberately disabled in this pinned build: TrueForge 0.1.4 children inherit the root's Vault tools, so enabling them would violate the root-only `release_result` invariant.
