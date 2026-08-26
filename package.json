@@ -8,6 +8,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.10",
+    "@truefoundry/trueforge-sdk": "0.1.0",
     "@types/node": "24.13.3",
     "typescript": "7.0.2",
     "vitest": "4.1.11"
@@ -17,7 +18,11 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "verify-receipt": "node --import ./scripts/register-ts-loader.mjs src/verify/cli.ts"
+    "verify-receipt": "node --import ./scripts/register-ts-loader.mjs src/verify/cli.ts",
+    "start-vault": "node --import ./scripts/register-ts-loader.mjs scripts/start-vault.ts",
+    "setup-trueforge": "node --import ./scripts/register-ts-loader.mjs scripts/setup-trueforge.ts",
+    "gate-a": "node --import ./scripts/register-ts-loader.mjs scripts/gate-a.ts",
+    "gate-b": "node --import ./scripts/register-ts-loader.mjs scripts/gate-b.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",

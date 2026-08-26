@@ -10,7 +10,7 @@ import { GROUP_SIZE_FIELD, MAX_RELEASE_ROWS, MIN_GROUP_SIZE } from "../contract/
 import { validateRelease, verifyRelease } from "../contract/validate.js";
 import type { AggregateMetric, VaultDatabase } from "../vault/database.js";
 import { COLUMN_SENSITIVITY, DATASET_VERSION, SAFE_DIMENSIONS } from "../vault/schema.js";
-import { errorResult, jsonResult, type VaultToolHandlers } from "./mcp.js";
+import { errorResult, jsonResult, type ReleaseResultInput, type VaultToolHandlers } from "./mcp.js";
 import type { VaultStore } from "./store.js";
 
 // prepare_analysis and release_result must build rows identically: release
@@ -77,11 +77,7 @@ function projectReleasedRows(candidate: {
   });
 }
 
-function releaseResultInner(
-  db: VaultDatabase,
-  store: VaultStore,
-  input: { queryId: string; contractHash: string; outputHash: string },
-) {
+function releaseResultInner(db: VaultDatabase, store: VaultStore, input: ReleaseResultInput) {
   const entry = store.getPrepared(input.queryId);
   if (entry === undefined) {
     store.recordAudit(input.queryId, "unknown_query_id");
@@ -90,6 +86,16 @@ function releaseResultInner(
   if (store.getReceipt(input.queryId) !== undefined) {
     store.recordAudit(input.queryId, "already_released");
     return errorResult("already_released");
+  }
+
+  if (
+    input.purpose !== entry.candidate.purpose ||
+    input.audience !== entry.candidate.audience ||
+    canonicalize(input.columns) !== canonicalize(entry.candidate.columns) ||
+    input.suppressedCells !== entry.suppressedCells
+  ) {
+    store.recordAudit(input.queryId, "denied", [{ code: "approval_tuple_mismatch" }]);
+    return errorResult("release_denied", "approval_tuple_mismatch");
   }
 
   const verdict = verifyRelease(entry.candidate, input.contractHash, input.outputHash);
@@ -121,7 +127,10 @@ function releaseResultInner(
     // the same closed set AggregateMetric names.
     entry.candidate.queryPlan.metric as AggregateMetric,
   );
-  if (canonicalize(recomputed.rows) !== canonicalize(entry.candidate.rows)) {
+  if (
+    canonicalize(recomputed.rows) !== canonicalize(entry.candidate.rows) ||
+    recomputed.suppressedCells !== entry.suppressedCells
+  ) {
     store.recordAudit(input.queryId, "denied", [{ code: "evidence_mismatch" }]);
     return errorResult("release_denied", "evidence_mismatch");
   }

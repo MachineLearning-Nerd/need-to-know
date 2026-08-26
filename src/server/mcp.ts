@@ -13,6 +13,16 @@ export type ToolResult = {
   readonly isError?: boolean;
 };
 
+export type ReleaseResultInput = {
+  readonly queryId: string;
+  readonly purpose: string;
+  readonly audience: string;
+  readonly columns: string[];
+  readonly suppressedCells: number;
+  readonly contractHash: string;
+  readonly outputHash: string;
+};
+
 export type VaultToolHandlers = {
   describeDataset(): ToolResult;
   prepareAnalysis(input: {
@@ -22,7 +32,7 @@ export type VaultToolHandlers = {
     metric: string;
   }): ToolResult;
   validateRelease(input: { queryId: string }): ToolResult;
-  releaseResult(input: { queryId: string; contractHash: string; outputHash: string }): ToolResult;
+  releaseResult(input: ReleaseResultInput): ToolResult;
   renderSafeChart(input: { queryId: string }): ToolResult;
 };
 
@@ -98,6 +108,10 @@ function buildMcpServer(handlers: VaultToolHandlers): McpServer {
         "Release the approved aggregate for a queryId. Revalidates the vault-stored candidate and both hashes at execution time; any mismatch is denied with an audit record and zero release side effects.",
       inputSchema: {
         queryId: z.string(),
+        purpose: z.string(),
+        audience: z.string(),
+        columns: z.array(z.string()),
+        suppressedCells: z.number().int().nonnegative(),
         contractHash: z.string(),
         outputHash: z.string(),
       },

@@ -1,5 +1,5 @@
-import { beforeAll, describe, expect, it } from "vitest";
-import { validateRelease } from "../contract/validate.js";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { type ReleaseCandidate, validateRelease } from "../contract/validate.js";
 import { createVaultHandlers } from "../server/handlers.js";
 import { createVaultStore } from "../server/store.js";
 import { openVaultDatabase, type VaultDatabase } from "../vault/database.js";
@@ -18,7 +18,9 @@ beforeAll(() => {
   db = openVaultDatabase();
 });
 
-// afterAll: database is opened once and GC'd — no StatementSync.close() in Node 24.
+afterAll(() => {
+  db.close();
+});
 
 function buildValidReceipt() {
   const store = createVaultStore();
@@ -33,12 +35,14 @@ function buildValidReceipt() {
   if (prepResult.isError) throw new Error("prepare failed in test setup");
   const prepBody = JSON.parse(prepResult.content[0]?.text ?? "{}") as {
     queryId: string;
-    candidate: unknown;
+    candidate: ReleaseCandidate;
+    suppressedCells: number;
   };
 
   const valResult = handlers.validateRelease({ queryId: prepBody.queryId });
   if (valResult.isError) throw new Error("validate failed in test setup");
   const valBody = JSON.parse(valResult.content[0]?.text ?? "{}") as {
+    queryId: string;
     status: string;
     contractHash: string;
     outputHash: string;
@@ -47,6 +51,10 @@ function buildValidReceipt() {
 
   const relResult = handlers.releaseResult({
     queryId: prepBody.queryId,
+    purpose: prepBody.candidate.purpose,
+    audience: prepBody.candidate.audience,
+    columns: [...prepBody.candidate.columns],
+    suppressedCells: prepBody.suppressedCells,
     contractHash: valBody.contractHash,
     outputHash: valBody.outputHash,
   });
@@ -60,53 +68,179 @@ function buildValidReceipt() {
       datasetVersion: string;
       policyVersion: string;
     };
+    columns: string[];
+    rows: Array<Record<string, string | number>>;
   };
 
-  return { verifiable: { receipt: relBody.receipt, candidate: prepBody.candidate }, store };
+  const releaseTuple = {
+    queryId: prepBody.queryId,
+    purpose: prepBody.candidate.purpose,
+    audience: prepBody.candidate.audience,
+    columns: [...prepBody.candidate.columns],
+    suppressedCells: prepBody.suppressedCells,
+    contractHash: valBody.contractHash,
+    outputHash: valBody.outputHash,
+  };
+  const events = [
+    {
+      type: "model.message",
+      id: "evt-prepare",
+      thread_id: "main",
+      tool_calls: [
+        {
+          id: "tc-prepare",
+          type: "function",
+          function: {
+            name: "prepare_analysis",
+            arguments: JSON.stringify({
+              purpose: prepBody.candidate.purpose,
+              audience: prepBody.candidate.audience,
+              dimensions: prepBody.candidate.queryPlan.dimensions,
+              metric: prepBody.candidate.queryPlan.metric,
+            }),
+          },
+          tool_info: {
+            type: "mcp",
+            name: "prepare_analysis",
+            server_id: "vault",
+            server_name: "vault",
+          },
+        },
+      ],
+    },
+    {
+      type: TF_EVENT_TOOL_RESPONSE,
+      thread_id: "main",
+      tool_call_id: "tc-prepare",
+      content: JSON.stringify(prepBody),
+    },
+    {
+      type: "model.message",
+      id: "evt-validate",
+      thread_id: "main",
+      tool_calls: [
+        {
+          id: "tc-validate",
+          type: "function",
+          function: {
+            name: "validate_release",
+            arguments: JSON.stringify({ queryId: prepBody.queryId }),
+          },
+          tool_info: {
+            type: "mcp",
+            name: "validate_release",
+            server_id: "vault",
+            server_name: "vault",
+          },
+        },
+      ],
+    },
+    {
+      type: TF_EVENT_TOOL_RESPONSE,
+      thread_id: "main",
+      tool_call_id: "tc-validate",
+      content: JSON.stringify(valBody),
+    },
+    {
+      type: "model.message",
+      id: "evt-release",
+      thread_id: "main",
+      tool_calls: [
+        {
+          id: "tc-release",
+          type: "function",
+          function: { name: "release_result", arguments: JSON.stringify(releaseTuple) },
+          tool_info: {
+            type: "mcp",
+            name: "release_result",
+            server_id: "vault",
+            server_name: "vault",
+          },
+        },
+      ],
+    },
+    {
+      type: TF_EVENT_TOOL_APPROVAL_REQUIRED,
+      thread_id: "main",
+      tool_calls: [{ id: "tc-release", source_event_id: "evt-release" }],
+    },
+    {
+      type: "turn.created",
+      input: [
+        {
+          type: TF_EVENT_USER_TOOL_APPROVAL,
+          thread_id: "main",
+          tool_call_id: "tc-release",
+          approval: { status: "allow" },
+        },
+      ],
+    },
+    {
+      type: TF_EVENT_TOOL_RESPONSE,
+      thread_id: "main",
+      tool_call_id: "tc-release",
+      content: JSON.stringify(relBody),
+    },
+  ];
+  return {
+    verifiable: {
+      receipt: relBody.receipt,
+      candidate: prepBody.candidate,
+      evidence: { sessionId: "sess-1", agentType: "inline", turnIds: ["turn-1"] },
+      events,
+    },
+    store,
+  };
+}
+
+function releaseBodyOf(verifiable: ReturnType<typeof buildValidReceipt>["verifiable"]) {
+  const candidate = verifiable.candidate as {
+    columns: readonly string[];
+    rows: ReadonlyArray<Readonly<Record<string, string | number>>>;
+  };
+  return {
+    receipt: verifiable.receipt,
+    columns: candidate.columns,
+    rows: candidate.rows.map((row) =>
+      Object.fromEntries(candidate.columns.map((column) => [column, row[column]])),
+    ),
+  };
 }
 
 // Minimal TrueForge-shaped event log for approval-ordering tests.
-function approvalEvents(overrides?: {
-  skipApproval?: boolean;
-  duplicateApproval?: boolean;
-  responseBeforeApproval?: boolean;
-  includeCanaryEmail?: boolean;
-  includeCanaryText?: boolean;
-}) {
-  const events: Array<Record<string, unknown>> = [];
-  if (!overrides?.responseBeforeApproval && !overrides?.skipApproval) {
-    const approval: Record<string, unknown> = {
-      type: TF_EVENT_TOOL_APPROVAL_REQUIRED,
-      tool_calls: [{ id: "tc-1", source_event_id: "evt-1" }],
-    };
+function approvalEvents(
+  overrides:
+    | {
+        skipApproval?: boolean;
+        duplicateApproval?: boolean;
+        responseBeforeApproval?: boolean;
+        includeCanaryEmail?: boolean;
+        includeCanaryText?: boolean;
+      }
+    | undefined,
+  verifiable: ReturnType<typeof buildValidReceipt>["verifiable"],
+) {
+  const events = structuredClone(verifiable.events) as Array<Record<string, unknown>>;
+  const gateIndex = events.findIndex((event) => event.type === TF_EVENT_TOOL_APPROVAL_REQUIRED);
+  const responseIndex = events.findIndex(
+    (event) => event.type === TF_EVENT_TOOL_RESPONSE && event.tool_call_id === "tc-release",
+  );
+  const gate = events[gateIndex];
+  if (gate !== undefined) {
     if (overrides?.includeCanaryEmail) {
-      approval.debug = CANARY.email;
+      gate.debug = CANARY.email;
     }
     if (overrides?.includeCanaryText) {
-      approval.debug = CANARY.freeText;
+      gate.debug = CANARY.freeText;
     }
-    events.push(approval);
-    if (overrides?.duplicateApproval) {
-      events.push({
-        type: TF_EVENT_TOOL_APPROVAL_REQUIRED,
-        tool_calls: [{ id: "tc-1", source_event_id: "evt-1" }],
-      });
-    }
-    events.push({
-      type: TF_EVENT_USER_TOOL_APPROVAL,
-      tool_call_id: "tc-1",
-      approval: { status: "allow" },
-    });
   }
-  if (overrides?.responseBeforeApproval) {
-    // response arrives before any approval
-    events.push({ type: TF_EVENT_TOOL_RESPONSE, tool_call_id: "tc-1" });
-    events.push({
-      type: TF_EVENT_TOOL_APPROVAL_REQUIRED,
-      tool_calls: [{ id: "tc-1", source_event_id: "evt-1" }],
-    });
-  } else {
-    events.push({ type: TF_EVENT_TOOL_RESPONSE, tool_call_id: "tc-1" });
+  if (overrides?.skipApproval && gateIndex >= 0) events.splice(gateIndex, 1);
+  if (overrides?.duplicateApproval && gate !== undefined) {
+    events.splice(gateIndex + 1, 0, structuredClone(gate));
+  }
+  if (overrides?.responseBeforeApproval && gateIndex >= 0 && responseIndex >= 0) {
+    const [response] = events.splice(responseIndex, 1);
+    if (response !== undefined) events.splice(gateIndex, 0, response);
   }
   return events;
 }
@@ -119,30 +253,31 @@ describe("verify-receipt: positive cases", () => {
     const result = verifyReceipt(verifiable);
     expect(result.outcome).toBe("pass");
     if (result.outcome === "pass") {
-      expect(result.receiptId).toMatch(/^r-\d+$/);
-      expect(result.queryId).toMatch(/^q-\d+$/);
+      expect(result.receiptId).toMatch(/^r-[0-9a-f-]{36}$/);
+      expect(result.queryId).toMatch(/^q-[0-9a-f-]{36}$/);
     }
   });
 
   it("passes with a minimal valid event log (approval before response)", () => {
     const { verifiable } = buildValidReceipt();
-    const result = verifyReceipt({ ...verifiable, events: approvalEvents() });
+    const result = verifyReceipt({
+      ...verifiable,
+      events: approvalEvents(undefined, verifiable),
+    });
     expect(result.outcome).toBe("pass");
   });
 
-  it("passes when events field is omitted entirely", () => {
+  it("fails closed when evidence and events are omitted", () => {
     const { verifiable } = buildValidReceipt();
-    const { events: _events, ...withoutEvents } = verifiable as typeof verifiable & {
-      events?: unknown;
-    };
-    const result = verifyReceipt(withoutEvents);
-    expect(result.outcome).toBe("pass");
+    const { events: _events, evidence: _evidence, ...withoutEvidence } = verifiable;
+    const result = verifyReceipt(withoutEvidence);
+    expect(result.outcome).toBe("receipt_malformed");
   });
 
-  it("passes when events field is null (treated as absent)", () => {
+  it("fails closed when events is null", () => {
     const { verifiable } = buildValidReceipt();
     const result = verifyReceipt({ ...verifiable, events: null });
-    expect(result.outcome).toBe("pass");
+    expect(result.outcome).toBe("events_malformed");
   });
 });
 
@@ -303,14 +438,14 @@ describe("verify-receipt: canary containment failures", () => {
 
   it("returns canary_in_events when the canary email appears in events", () => {
     const { verifiable } = buildValidReceipt();
-    const events = approvalEvents({ includeCanaryEmail: true });
+    const events = approvalEvents({ includeCanaryEmail: true }, verifiable);
     const result = verifyReceipt({ ...verifiable, events });
     expect(result.outcome).toBe("canary_in_events");
   });
 
   it("returns canary_in_events when the canary free_text appears in events", () => {
     const { verifiable } = buildValidReceipt();
-    const events = approvalEvents({ includeCanaryText: true });
+    const events = approvalEvents({ includeCanaryText: true }, verifiable);
     const result = verifyReceipt({ ...verifiable, events });
     expect(result.outcome).toBe("canary_in_events");
   });
@@ -321,21 +456,21 @@ describe("verify-receipt: canary containment failures", () => {
 describe("verify-receipt: event ordering failures", () => {
   it("returns approval_missing when no tool.approval_required event is present", () => {
     const { verifiable } = buildValidReceipt();
-    const events = approvalEvents({ skipApproval: true });
+    const events = approvalEvents({ skipApproval: true }, verifiable);
     const result = verifyReceipt({ ...verifiable, events });
     expect(result.outcome).toBe("approval_missing");
   });
 
   it("returns release_before_approval when tool.response precedes approval", () => {
     const { verifiable } = buildValidReceipt();
-    const events = approvalEvents({ responseBeforeApproval: true });
+    const events = approvalEvents({ responseBeforeApproval: true }, verifiable);
     const result = verifyReceipt({ ...verifiable, events });
     expect(result.outcome).toBe("release_before_approval");
   });
 
   it("returns duplicate_approval_event for duplicate tool call IDs in approval events", () => {
     const { verifiable } = buildValidReceipt();
-    const events = approvalEvents({ duplicateApproval: true });
+    const events = approvalEvents({ duplicateApproval: true }, verifiable);
     const result = verifyReceipt({ ...verifiable, events });
     expect(result.outcome).toBe("duplicate_approval_event");
   });
@@ -357,25 +492,43 @@ describe("verify-receipt: event ordering failures", () => {
   // exact evidence this verifier exists to reject.
   it("returns user_approval_missing when the user denied and the tool ran anyway", () => {
     const { verifiable } = buildValidReceipt();
+    const events = (verifiable.events as Array<Record<string, unknown>>).map((event) =>
+      event.type === "turn.created"
+        ? {
+            ...event,
+            input: [
+              {
+                type: TF_EVENT_USER_TOOL_APPROVAL,
+                thread_id: "main",
+                tool_call_id: "tc-release",
+                approval: { status: "deny" },
+              },
+            ],
+          }
+        : event,
+    );
     const result = verifyReceipt({
       ...verifiable,
-      events: [
-        { type: TF_EVENT_TOOL_APPROVAL_REQUIRED, tool_calls: [{ id: "tc-1" }] },
-        { type: TF_EVENT_USER_TOOL_APPROVAL, tool_call_id: "tc-1", approval: { status: "deny" } },
-        { type: TF_EVENT_TOOL_RESPONSE, tool_call_id: "tc-1" },
-      ],
+      events,
     });
     expect(result.outcome).toBe("user_approval_missing");
   });
 
-  it("returns user_approval_missing when no user.tool_approval event exists", () => {
+  // trueforge 0.1.4 does not persist the user's decision, so a stream with no
+  // user.tool_approval events falls back to structural evidence: a denial
+  // leaves its error marker on the gated response and must still fail.
+  it("returns user_approval_missing when the gated response records a denial", () => {
     const { verifiable } = buildValidReceipt();
+    const events = (verifiable.events as Array<Record<string, unknown>>)
+      .filter((event) => event.type !== "turn.created")
+      .map((event) =>
+        event.type === TF_EVENT_TOOL_RESPONSE && event.tool_call_id === "tc-release"
+          ? { ...event, content: '{"error":"User denied tool call: no reason provided"}' }
+          : event,
+      );
     const result = verifyReceipt({
       ...verifiable,
-      events: [
-        { type: TF_EVENT_TOOL_APPROVAL_REQUIRED, tool_calls: [{ id: "tc-1" }] },
-        { type: TF_EVENT_TOOL_RESPONSE, tool_call_id: "tc-1" },
-      ],
+      events,
     });
     expect(result.outcome).toBe("user_approval_missing");
   });
@@ -388,34 +541,371 @@ describe("verify-receipt: event ordering failures", () => {
       ...verifiable,
       events: [
         { type: TF_EVENT_TOOL_RESPONSE, tool_call_id: "tc-describe" },
-        { type: TF_EVENT_TOOL_RESPONSE, tool_call_id: "tc-prepare" },
-        { type: TF_EVENT_TOOL_APPROVAL_REQUIRED, tool_calls: [{ id: "tc-release" }] },
-        {
-          type: TF_EVENT_USER_TOOL_APPROVAL,
-          tool_call_id: "tc-release",
-          approval: { status: "allow" },
-        },
-        { type: TF_EVENT_TOOL_RESPONSE, tool_call_id: "tc-release" },
+        ...(verifiable.events as Array<Record<string, unknown>>),
       ],
     });
     expect(result.outcome).toBe("pass");
   });
 
   // Ordering must be judged on real indices into events: a filtered view
-  // shifted positions leftward, so one type-less event false-failed a
-  // correctly ordered stream.
-  it("passes a correctly ordered stream that contains a type-less event", () => {
+  // shifted positions leftward, so an unrecognised event type false-failed a
+  // correctly ordered stream. Real TrueForge streams carry many types the
+  // verifier does not interpret (model.message, turn.done, ...).
+  it("passes a correctly ordered stream that contains unrecognised event types", () => {
+    const { verifiable } = buildValidReceipt();
+    const valid = verifiable.events as Array<Record<string, unknown>>;
+    const result = verifyReceipt({
+      ...verifiable,
+      events: [valid[0], { type: "turn.paused" }, ...valid.slice(1), { type: "turn.done" }],
+    });
+    expect(result.outcome).toBe("pass");
+  });
+
+  // A record without a string type is not a TrueForge event; skipping it
+  // would let evidence hide inside the stream unexamined.
+  it("returns events_malformed for an event without a string type", () => {
     const { verifiable } = buildValidReceipt();
     const result = verifyReceipt({
       ...verifiable,
       events: [
-        { note: "heartbeat without a type field" },
+        { note: "no type field" },
         { type: TF_EVENT_TOOL_APPROVAL_REQUIRED, tool_calls: [{ id: "tc-1" }] },
         { type: TF_EVENT_USER_TOOL_APPROVAL, tool_call_id: "tc-1", approval: { status: "allow" } },
         { type: TF_EVENT_TOOL_RESPONSE, tool_call_id: "tc-1" },
       ],
     });
+    expect(result.outcome).toBe("events_malformed");
+  });
+});
+
+// ---- Session binding: evidence requires events ------------------------------
+
+describe("verify-receipt: session-bound evidence", () => {
+  // A session-bound stream must WITNESS the receipt: the gated post-approval
+  // response carries the receipt id and both hashes, the way a real
+  // trueforge release_result response does.
+  function boundEvents(verifiable: ReturnType<typeof buildValidReceipt>["verifiable"]) {
+    return structuredClone(verifiable.events) as Array<Record<string, unknown>>;
+  }
+
+  it("passes a bundle whose evidence and events agree", () => {
+    const { verifiable } = buildValidReceipt();
+    const result = verifyReceipt({
+      ...verifiable,
+      evidence: { sessionId: "sess-1", agentType: "inline", turnIds: ["turn-1"] },
+      events: boundEvents(verifiable).map((event) => ({
+        ...event,
+        session_id: "sess-1",
+        turn_id: "turn-1",
+      })),
+    });
     expect(result.outcome).toBe("pass");
+  });
+
+  it("returns receipt_malformed when evidence names a session but events are omitted", () => {
+    const { verifiable } = buildValidReceipt();
+    const { events: _events, ...withoutEvents } = verifiable;
+    const result = verifyReceipt({
+      ...withoutEvents,
+      evidence: { sessionId: "sess-1", agentType: "inline", turnIds: ["turn-1"] },
+    });
+    expect(result.outcome).toBe("receipt_malformed");
+  });
+
+  it("returns receipt_unwitnessed when no gated response carries the receipt", () => {
+    const { verifiable } = buildValidReceipt();
+    const events = boundEvents(verifiable);
+    const responseIndex = events.findIndex(
+      (event) => event.type === TF_EVENT_TOOL_RESPONSE && event.tool_call_id === "tc-release",
+    );
+    const witness = events[responseIndex] as { content: string };
+    const result = verifyReceipt({
+      ...verifiable,
+      evidence: { sessionId: "sess-1", agentType: "inline", turnIds: ["turn-1"] },
+      events: events.map((event, index) =>
+        index === responseIndex ? { ...event, content: witness.content.slice(0, 20) } : event,
+      ),
+    });
+    expect(result.outcome).toBe("receipt_unwitnessed");
+  });
+
+  it("requires an exact receipt object in the release response", () => {
+    const { verifiable } = buildValidReceipt();
+    const events = boundEvents(verifiable);
+    const result = verifyReceipt({
+      ...verifiable,
+      receipt: { ...verifiable.receipt, receiptId: "r" },
+      evidence: { sessionId: "sess-1", agentType: "inline", turnIds: ["turn-1"] },
+      events,
+    });
+    expect(result.outcome).toBe("receipt_unwitnessed");
+  });
+
+  it("requires the exact hash-bound columns and rows in the release response", () => {
+    const { verifiable } = buildValidReceipt();
+    const body = releaseBodyOf(verifiable);
+    const firstRow = body.rows[0];
+    if (firstRow === undefined) throw new Error("fixture has no released rows");
+    const alteredRows = [{ ...firstRow, ticket_count: 999_999 }, ...body.rows.slice(1)];
+    const mutations = [
+      { ...body, rows: alteredRows },
+      { ...body, columns: [...body.columns].reverse() },
+      { ...body, rows: [...body.rows].reverse() },
+      { ...body, extra: "unverified" },
+    ];
+
+    for (const mutation of mutations) {
+      const events = boundEvents(verifiable).map((event) =>
+        event.type === TF_EVENT_TOOL_RESPONSE && event.tool_call_id === "tc-release"
+          ? { ...event, content: JSON.stringify(mutation) }
+          : event,
+      );
+      expect(verifyReceipt({ ...verifiable, events }).outcome).toBe("receipt_unwitnessed");
+    }
+  });
+
+  it("rejects approval evidence that does not resolve to release_result", () => {
+    const { verifiable } = buildValidReceipt();
+    const result = verifyReceipt({
+      ...verifiable,
+      evidence: { sessionId: "sess-1", agentType: "inline", turnIds: ["turn-1"] },
+      events: boundEvents(verifiable).map((event) =>
+        event.type === TF_EVENT_TOOL_APPROVAL_REQUIRED
+          ? { ...event, tool_calls: [{ id: "tc-release", source_event_id: "evt-missing" }] }
+          : event,
+      ),
+    });
+    expect(result.outcome).toBe("approval_source_mismatch");
+  });
+
+  it("requires release_result to come from the named Vault MCP server", () => {
+    const { verifiable } = buildValidReceipt();
+    const invalidInfo = [
+      undefined,
+      { type: "builtin", name: "release_result", server_id: "vault", server_name: "vault" },
+      { type: "mcp", name: "other", server_id: "vault", server_name: "vault" },
+      { type: "mcp", name: "release_result", server_id: "not-vault", server_name: "vault" },
+      { type: "mcp", name: "release_result", server_id: "vault", server_name: "not-vault" },
+    ];
+
+    for (const toolInfo of invalidInfo) {
+      const events = boundEvents(verifiable).map((event) => {
+        if (event.type !== "model.message" || event.id !== "evt-release") return event;
+        const calls = event.tool_calls as Array<Record<string, unknown>>;
+        return { ...event, tool_calls: [{ ...calls[0], tool_info: toolInfo }] };
+      });
+      expect(verifyReceipt({ ...verifiable, events }).outcome).toBe("approval_source_mismatch");
+    }
+  });
+
+  it("requires the persisted prepare and validate chain", () => {
+    const { verifiable } = buildValidReceipt();
+    for (const omittedCallId of ["tc-prepare", "tc-validate"]) {
+      const events = boundEvents(verifiable).filter((event) => {
+        if (event.tool_call_id === omittedCallId) return false;
+        const calls = event.tool_calls as Array<{ id?: unknown }> | undefined;
+        return !calls?.some((call) => call.id === omittedCallId);
+      });
+      expect(verifyReceipt({ ...verifiable, events }).outcome).toBe("approval_source_mismatch");
+    }
+  });
+
+  it("requires every release-chain action on the root thread", () => {
+    const { verifiable } = buildValidReceipt();
+    const events = boundEvents(verifiable).map((event) => {
+      if (event.type === "turn.created") {
+        const input = event.input as Array<Record<string, unknown>>;
+        return { ...event, input: input.map((item) => ({ ...item, thread_id: "child-1" })) };
+      }
+      return { ...event, thread_id: "child-1" };
+    });
+    expect(verifyReceipt({ ...verifiable, events }).outcome).toBe("approval_source_mismatch");
+  });
+
+  it("requires the full structured release tuple in the approved tool call", () => {
+    const { verifiable } = buildValidReceipt();
+    const events = boundEvents(verifiable).map((event) => {
+      if (event.type !== "model.message" || event.id !== "evt-release") return event;
+      const calls = event.tool_calls as Array<Record<string, unknown>>;
+      const call = calls[0];
+      const fn = call?.function as Record<string, unknown>;
+      const args = JSON.parse(fn.arguments as string) as Record<string, unknown>;
+      delete args.purpose;
+      return {
+        ...event,
+        tool_calls: [{ ...call, function: { ...fn, arguments: JSON.stringify(args) } }],
+      };
+    });
+    expect(verifyReceipt({ ...verifiable, events }).outcome).toBe("approval_source_mismatch");
+  });
+
+  it("rejects duplicate responses, orphan gates, and top-level approval claims", () => {
+    const { verifiable } = buildValidReceipt();
+    const events = boundEvents(verifiable);
+    const releaseResponse = events.find(
+      (event) => event.type === TF_EVENT_TOOL_RESPONSE && event.tool_call_id === "tc-release",
+    );
+    if (releaseResponse === undefined) throw new Error("fixture has no release response");
+    expect(
+      verifyReceipt({ ...verifiable, events: [...events, structuredClone(releaseResponse)] })
+        .outcome,
+    ).toBe("receipt_unwitnessed");
+    expect(
+      verifyReceipt({
+        ...verifiable,
+        events: [
+          ...events,
+          {
+            type: TF_EVENT_TOOL_APPROVAL_REQUIRED,
+            thread_id: "main",
+            tool_calls: [{ id: "orphan", source_event_id: "missing" }],
+          },
+        ],
+      }).outcome,
+    ).toBe("duplicate_approval_event");
+    expect(
+      verifyReceipt({
+        ...verifiable,
+        events: [
+          ...events,
+          {
+            type: TF_EVENT_USER_TOOL_APPROVAL,
+            thread_id: "main",
+            tool_call_id: "tc-release",
+            approval: { status: "allow" },
+          },
+        ],
+      }).outcome,
+    ).toBe("events_malformed");
+  });
+
+  it("snapshots a stateful candidate once before checking its witnessed rows", () => {
+    const { verifiable } = buildValidReceipt();
+    const original = verifiable.candidate as ReleaseCandidate;
+    const forgedRows = original.rows.map((row, index) =>
+      index === 0 ? { ...row, ticket_count: 999_999 } : row,
+    );
+    let rowReads = 0;
+    const candidate = new Proxy(original, {
+      getOwnPropertyDescriptor(target, property) {
+        const descriptor = Reflect.getOwnPropertyDescriptor(target, property);
+        if (property !== "rows" || descriptor === undefined) return descriptor;
+        rowReads += 1;
+        return { ...descriptor, value: rowReads === 1 ? target.rows : forgedRows };
+      },
+    });
+    const forgedBody = { ...releaseBodyOf(verifiable), rows: forgedRows };
+    const events = boundEvents(verifiable).map((event) =>
+      event.type === TF_EVENT_TOOL_RESPONSE && event.tool_call_id === "tc-release"
+        ? { ...event, content: JSON.stringify(forgedBody) }
+        : event,
+    );
+    expect(verifyReceipt({ ...verifiable, candidate, events }).outcome).toBe("receipt_unwitnessed");
+    expect(rowReads).toBe(1);
+  });
+
+  it("does not accept evidence borrowed from an identical fresh-store run", () => {
+    const first = buildValidReceipt().verifiable;
+    const second = buildValidReceipt().verifiable;
+    expect(first.receipt.queryId).not.toBe(second.receipt.queryId);
+    expect(
+      verifyReceipt({ ...second, evidence: first.evidence, events: first.events }).outcome,
+    ).not.toBe("pass");
+  });
+
+  it("rejects a nested persisted user denial", () => {
+    const { verifiable } = buildValidReceipt();
+    const events = boundEvents(verifiable);
+    const result = verifyReceipt({
+      ...verifiable,
+      evidence: { sessionId: "sess-1", agentType: "inline", turnIds: ["turn-1"] },
+      events: events.map((event) =>
+        event.type === "turn.created"
+          ? {
+              type: "turn.created",
+              input: [
+                {
+                  type: TF_EVENT_USER_TOOL_APPROVAL,
+                  thread_id: "main",
+                  tool_call_id: "tc-release",
+                  approval: { status: "deny" },
+                },
+              ],
+            }
+          : event,
+      ),
+    });
+    expect(result.outcome).toBe("user_approval_missing");
+  });
+
+  it("rejects duplicate persisted user decisions", () => {
+    const { verifiable } = buildValidReceipt();
+    const events = boundEvents(verifiable);
+    const duplicate = events.find((event) => event.type === "turn.created");
+    if (duplicate === undefined) throw new Error("fixture has no persisted user decision");
+    const result = verifyReceipt({
+      ...verifiable,
+      events: events.flatMap((event) =>
+        event === duplicate ? [event, structuredClone(event)] : [event],
+      ),
+    });
+    expect(result.outcome).toBe("duplicate_user_approval");
+  });
+
+  it("rejects a malformed persisted user decision", () => {
+    const { verifiable } = buildValidReceipt();
+    const events = boundEvents(verifiable);
+    const result = verifyReceipt({
+      ...verifiable,
+      events: events.map((event) =>
+        event.type === "turn.created"
+          ? {
+              type: "turn.created",
+              input: [
+                {
+                  type: TF_EVENT_USER_TOOL_APPROVAL,
+                  thread_id: "main",
+                  tool_call_id: "tc-release",
+                },
+              ],
+            }
+          : event,
+      ),
+    });
+    expect(result.outcome).toBe("events_malformed");
+  });
+
+  it("returns session_mismatch when an event names another session or turn", () => {
+    const { verifiable } = buildValidReceipt();
+    const events = boundEvents(verifiable);
+    const otherSession = verifyReceipt({
+      ...verifiable,
+      evidence: { sessionId: "sess-1", agentType: "inline", turnIds: ["turn-1"] },
+      events: [{ ...events[0], session_id: "sess-2" }, ...events.slice(1)],
+    });
+    expect(otherSession.outcome).toBe("session_mismatch");
+    const otherTurn = verifyReceipt({
+      ...verifiable,
+      evidence: { sessionId: "sess-1", agentType: "inline", turnIds: ["turn-1"] },
+      events: [{ ...events[0], turn_id: "turn-9" }, ...events.slice(1)],
+    });
+    expect(otherTurn.outcome).toBe("session_mismatch");
+  });
+
+  it("returns receipt_malformed for malformed evidence", () => {
+    const { verifiable } = buildValidReceipt();
+    for (const evidence of [
+      { sessionId: "", agentType: "inline", turnIds: ["turn-1"] },
+      { sessionId: "sess-1", agentType: "inline", turnIds: [] },
+      { sessionId: "sess-1", agentType: "inline", turnIds: ["turn-1", "turn-1"] },
+      { sessionId: "sess-1", agentType: "inline", turnIds: ["turn-1"], extra: true },
+      { sessionId: "sess-1", agentType: "reference", turnIds: ["turn-1"] },
+      { sessionId: "sess-1", agentType: "inline" },
+      "sess-1",
+    ]) {
+      const result = verifyReceipt({ ...verifiable, evidence, events: boundEvents(verifiable) });
+      expect(result.outcome, JSON.stringify(evidence)).toBe("receipt_malformed");
+    }
   });
 });
 

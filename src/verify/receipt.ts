@@ -1,9 +1,8 @@
 import type { Sha256Hex } from "../contract/canonical.js";
 
-// A VerifiableReceipt bundles the release receipt together with the candidate
-// that produced it. The verifier recomputes both hashes from the candidate and
-// checks them against the receipt — internal consistency only. It does not
-// authenticate origin or prevent a party from fabricating both fields together.
+// A VerifiableReceipt bundles the release receipt, candidate, and persisted
+// TrueForge evidence that produced it. The library checks their consistency;
+// the CLI additionally refetches the identified session from TrueForge.
 export type VerifiableReceipt = {
   readonly receipt: {
     // Display field only: nothing candidate-side can corroborate a receiptId,
@@ -16,10 +15,14 @@ export type VerifiableReceipt = {
     readonly policyVersion: string;
   };
   readonly candidate: unknown;
-  // Optional: serialized TrueForge session events for the turn that produced
-  // this receipt. When present the verifier additionally checks approval-before-
-  // release ordering and canary absence in the event stream.
-  readonly events?: unknown;
+  // TrueForge session binding: which session and turns produced this receipt.
+  readonly evidence: {
+    readonly sessionId: string;
+    readonly agentType: "inline";
+    readonly turnIds: readonly string[];
+  };
+  // Serialized TrueForge session events for the named turns.
+  readonly events: unknown;
 };
 
 // The verifier never throws — every path returns a typed verdict.
@@ -33,8 +36,14 @@ export type VerifyOutcome =
   | "receipt_metadata_mismatch"
   | "canary_in_rows"
   | "events_malformed"
+  | "events_unavailable"
+  | "events_partial"
+  | "session_mismatch"
+  | "receipt_unwitnessed"
+  | "approval_source_mismatch"
   | "approval_missing"
   | "user_approval_missing"
+  | "duplicate_user_approval"
   | "release_before_approval"
   | "canary_in_events"
   | "duplicate_approval_event";
@@ -58,4 +67,9 @@ export const RECEIPT_KEYS = Object.freeze([
   "policyVersion",
 ] as const);
 
-export const VERIFIABLE_RECEIPT_KEYS = Object.freeze(["receipt", "candidate"] as const);
+export const VERIFIABLE_RECEIPT_KEYS = Object.freeze([
+  "receipt",
+  "candidate",
+  "evidence",
+  "events",
+] as const);

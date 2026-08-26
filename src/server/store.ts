@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type { Sha256Hex } from "../contract/canonical.js";
 import type { Finding } from "../contract/findings.js";
 import type { ReleaseCandidate } from "../contract/validate.js";
@@ -59,13 +61,9 @@ export function createVaultStore(): VaultStore {
   const prepared = new Map<string, PreparedAnalysis>();
   const auditLog: AuditRecord[] = [];
   const receipts = new Map<string, ReleaseReceipt>();
-  let nextQueryId = 1;
-  let nextReceiptId = 1;
-
   return {
     savePrepared: (candidate, suppressedCells) => {
-      const queryId = `q-${nextQueryId}`;
-      nextQueryId += 1;
+      const queryId = `q-${randomUUID()}`;
       // Deep-frozen copies, not references: queryPlan.dimensions aliases the
       // caller's parsed input array, and a post-release in-process mutation
       // of rows would change what render_safe_chart serves with no check.
@@ -130,10 +128,9 @@ export function createVaultStore(): VaultStore {
         throw new Error(`receipt already exists: ${receipt.queryId}`);
       }
       const entry: ReleaseReceipt = Object.freeze({
-        receiptId: `r-${nextReceiptId}`,
+        receiptId: `r-${randomUUID()}`,
         ...receipt,
       });
-      nextReceiptId += 1;
       receipts.set(receipt.queryId, entry);
       return entry;
     },
