@@ -433,7 +433,10 @@ export function verifyReceipt(value: unknown): VerifyResult {
     const { receipt, evidence, events: rawEvents } = verifiable;
     const candidate = parseReleaseCandidate(verifiable.candidate);
     if (candidate === null) {
-      return { outcome: "candidate_malformed", detail: "candidate_malformed" };
+      return {
+        outcome: "candidate_malformed",
+        detail: "candidate is not a well-formed release candidate snapshot",
+      };
     }
 
     // Persisted evidence is mandatory for an authoritative receipt verdict.

@@ -1,3 +1,7 @@
+import { CANARY } from "../src/vault/seed.js";
+import { checkVaultResponses } from "../src/verify/boundary.js";
+import type { PersistedEvent } from "../src/verify/events.js";
+
 export type GateStreamEvent = {
   type: string;
   id?: string;
@@ -88,7 +92,3 @@ export function exercisedQuestionAndApproval(
 ): boolean {
   return approvalPauses >= 1 && questionPauses >= 1;
 }
-
-import { CANARY } from "../src/vault/seed.js";
-import { checkVaultResponses } from "../src/verify/boundary.js";
-import type { PersistedEvent } from "../src/verify/events.js";
