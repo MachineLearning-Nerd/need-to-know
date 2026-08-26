@@ -16,9 +16,17 @@ export type VerifiableReceipt = {
     readonly policyVersion: string;
   };
   readonly candidate: unknown;
-  // Optional: serialized TrueForge session events for the turn that produced
-  // this receipt. When present the verifier additionally checks approval-before-
-  // release ordering and canary absence in the event stream.
+  // TrueForge session binding: which session and turns produced this receipt.
+  // When present, event evidence becomes REQUIRED — a bundle that names a
+  // session but carries no events must not verify.
+  readonly evidence?: {
+    readonly sessionId: string;
+    readonly turnIds: readonly string[];
+  };
+  // Serialized TrueForge session events for the turns that produced this
+  // receipt. When present the verifier additionally checks approval-before-
+  // release ordering and canary absence in the event stream. Optional only
+  // when no evidence section names a session.
   readonly events?: unknown;
 };
 
@@ -33,6 +41,9 @@ export type VerifyOutcome =
   | "receipt_metadata_mismatch"
   | "canary_in_rows"
   | "events_malformed"
+  | "events_missing"
+  | "session_mismatch"
+  | "receipt_unwitnessed"
   | "approval_missing"
   | "user_approval_missing"
   | "release_before_approval"
@@ -59,3 +70,5 @@ export const RECEIPT_KEYS = Object.freeze([
 ] as const);
 
 export const VERIFIABLE_RECEIPT_KEYS = Object.freeze(["receipt", "candidate"] as const);
+
+export const VERIFIABLE_OPTIONAL_KEYS = Object.freeze(["evidence", "events"] as const);

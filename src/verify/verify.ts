@@ -6,6 +6,7 @@ import {
   TF_EVENT_TOOL_APPROVAL_REQUIRED,
   TF_EVENT_TOOL_RESPONSE,
   TF_EVENT_USER_TOOL_APPROVAL,
+  VERIFIABLE_OPTIONAL_KEYS,
   VERIFIABLE_RECEIPT_KEYS,
   type VerifiableReceipt,
   type VerifyResult,
@@ -26,20 +27,42 @@ function parseReceipt(value: unknown): VerifiableReceipt["receipt"] | null {
   return record as unknown as VerifiableReceipt["receipt"];
 }
 
+// Parse the optional evidence section: session + turn ids binding this bundle
+// to the TrueForge run that produced it. Malformed evidence is malformed
+// input, never silently ignored evidence.
+function parseEvidence(value: unknown): VerifiableReceipt["evidence"] | null | undefined {
+  if (value === undefined) return undefined;
+  const record = snapshotRecord(value);
+  if (record === null) return null;
+  const own = Object.keys(record);
+  if (own.length !== 2 || !own.includes("sessionId") || !own.includes("turnIds")) return null;
+  if (typeof record.sessionId !== "string" || record.sessionId.length === 0) return null;
+  const turnIds = snapshotArray(record.turnIds);
+  if (turnIds === null || turnIds.length === 0) return null;
+  for (const turnId of turnIds) {
+    if (typeof turnId !== "string" || turnId.length === 0) return null;
+  }
+  return { sessionId: record.sessionId, turnIds: turnIds as string[] };
+}
+
 // Parse a VerifiableReceipt from unknown input (e.g. JSON.parse output).
 function parseVerifiable(value: unknown): VerifiableReceipt | null {
   const record = snapshotRecord(value);
   if (record === null) return null;
-  // Must have at least receipt + candidate; events is optional.
+  // Must have at least receipt + candidate; evidence and events are optional.
   const own = Object.keys(record);
   if (!VERIFIABLE_RECEIPT_KEYS.every((key) => own.includes(key))) return null;
-  // Extra keys beyond receipt/candidate/events are disallowed — fail closed.
+  // Extra keys beyond the declared set are disallowed — fail closed.
+  const allowed: readonly string[] = [...VERIFIABLE_RECEIPT_KEYS, ...VERIFIABLE_OPTIONAL_KEYS];
   for (const key of own) {
-    if (key !== "receipt" && key !== "candidate" && key !== "events") return null;
+    if (!allowed.includes(key)) return null;
   }
   const receipt = parseReceipt(record.receipt);
   if (receipt === null) return null;
-  return { receipt, candidate: record.candidate, events: record.events };
+  const evidence = parseEvidence(record.evidence);
+  if (evidence === null) return null;
+  const result: VerifiableReceipt = { receipt, candidate: record.candidate, events: record.events };
+  return evidence === undefined ? result : { ...result, evidence };
 }
 
 // Scan serialized text for the canary values. Used for both released rows
@@ -75,11 +98,49 @@ function parseEvents(value: unknown): Array<Record<string, unknown>> | null | un
 // approval, so demanding approval before every response would reject every
 // legitimate full-session transcript. All positions are real indices into
 // events — a filtered view would shift them and misjudge ordering.
-function checkEvents(events: Array<Record<string, unknown>>): VerifyResult | null {
+function checkEvents(
+  events: Array<Record<string, unknown>>,
+  evidence: VerifiableReceipt["evidence"],
+  receipt: VerifiableReceipt["receipt"],
+): VerifyResult | null {
   // Canary check over the full serialized event stream.
   const eventsText = JSON.stringify(events);
   if (containsCanary(eventsText)) {
     return { outcome: "canary_in_events", detail: "canary value found in event stream" };
+  }
+
+  // Every event must carry a string type: a record without one is not a
+  // TrueForge event and cannot be classified, so it fails closed rather than
+  // being skipped — skipped records would let evidence hide inside the
+  // stream unexamined.
+  for (let index = 0; index < events.length; index++) {
+    if (typeof events[index]?.type !== "string") {
+      return { outcome: "events_malformed", detail: `event at index ${index} has no string type` };
+    }
+  }
+
+  // When the bundle names its session, any event that itself carries session
+  // or turn identifiers must agree — a stream borrowed from another run must
+  // not certify this receipt.
+  if (evidence !== undefined) {
+    for (let index = 0; index < events.length; index++) {
+      const event = events[index];
+      if (event === undefined) continue;
+      const sessionId = event.session_id ?? event.sessionId;
+      if (typeof sessionId === "string" && sessionId !== evidence.sessionId) {
+        return {
+          outcome: "session_mismatch",
+          detail: `event at index ${index} names another session`,
+        };
+      }
+      const turnId = event.turn_id ?? event.turnId;
+      if (typeof turnId === "string" && !evidence.turnIds.includes(turnId)) {
+        return {
+          outcome: "session_mismatch",
+          detail: `event at index ${index} names another turn`,
+        };
+      }
+    }
   }
 
   // Gated tool calls: id -> position of the tool.approval_required naming it.
@@ -109,12 +170,19 @@ function checkEvents(events: Array<Record<string, unknown>>): VerifyResult | nul
     return { outcome: "approval_missing", detail: "no tool.approval_required event found" };
   }
 
+  const isUserApprovalFor = (event: Record<string, unknown>, id: string): boolean =>
+    event.type === TF_EVENT_USER_TOOL_APPROVAL && event.tool_call_id === id;
   const isUserAllow = (event: Record<string, unknown>, id: string): boolean => {
-    if (event.type !== TF_EVENT_USER_TOOL_APPROVAL || event.tool_call_id !== id) return false;
+    if (!isUserApprovalFor(event, id)) return false;
     const approval = snapshotRecord(event.approval);
     return approval !== null && approval.status === "allow";
   };
+  // trueforge 0.1.4 responds to a denied gated call with this error text —
+  // the one persisted trace a denial leaves.
+  const isDeniedResponse = (event: Record<string, unknown>): boolean =>
+    typeof event.content === "string" && event.content.includes("User denied tool call");
 
+  let witnessed = false;
   for (let index = 0; index < events.length; index++) {
     const event = events[index];
     if (event === undefined || event.type !== TF_EVENT_TOOL_RESPONSE) continue;
@@ -128,22 +196,54 @@ function checkEvents(events: Array<Record<string, unknown>>): VerifyResult | nul
         detail: `tool.response at index ${index} precedes its tool.approval_required`,
       };
     }
-    // The agent asking is not the user allowing: the grant must sit between
-    // the request and the execution, or the response ran unapproved.
-    let granted = false;
-    for (let position = requested + 1; position < index; position++) {
-      const candidate = events[position];
-      if (candidate !== undefined && isUserAllow(candidate, id)) {
-        granted = true;
-        break;
+    // The agent asking is not the user allowing. When the log carries
+    // user.tool_approval events for this call, an "allow" must sit between
+    // the request and the execution. trueforge 0.1.4 does NOT persist the
+    // user's decision, so on persisted streams the grant is evidenced
+    // structurally instead: a denial leaves its error marker on the
+    // response, and only a granted release can carry the receipt (checked
+    // below for session-bound bundles).
+    const hasUserEvents = events.some((candidate) => isUserApprovalFor(candidate, id));
+    if (hasUserEvents) {
+      let granted = false;
+      for (let position = requested + 1; position < index; position++) {
+        const candidate = events[position];
+        if (candidate !== undefined && isUserAllow(candidate, id)) {
+          granted = true;
+          break;
+        }
       }
-    }
-    if (!granted) {
+      if (!granted) {
+        return {
+          outcome: "user_approval_missing",
+          detail: `tool.response at index ${index} for ${id.slice(0, 120)} has no user grant`,
+        };
+      }
+    } else if (isDeniedResponse(event)) {
       return {
         outcome: "user_approval_missing",
-        detail: `tool.response at index ${index} for ${id.slice(0, 120)} has no user grant`,
+        detail: `tool.response at index ${index} for ${id.slice(0, 120)} records a user denial`,
       };
     }
+    if (
+      typeof event.content === "string" &&
+      event.content.includes(receipt.receiptId) &&
+      event.content.includes(receipt.contractHash) &&
+      event.content.includes(receipt.outputHash)
+    ) {
+      witnessed = true;
+    }
+  }
+
+  // A session-bound bundle claims these events ARE the run that produced the
+  // receipt, so some gated post-approval response must carry the receipt id
+  // and both hashes. A stream where the release was denied — or that belongs
+  // to some other run — cannot witness it and must not certify it.
+  if (evidence !== undefined && !witnessed) {
+    return {
+      outcome: "receipt_unwitnessed",
+      detail: "no gated tool.response carries this receipt's id and hashes",
+    };
   }
 
   return null;
@@ -157,7 +257,7 @@ export function verifyReceipt(value: unknown): VerifyResult {
       return { outcome: "receipt_malformed", detail: "input is not a valid VerifiableReceipt" };
     }
 
-    const { receipt, candidate, events: rawEvents } = verifiable;
+    const { receipt, candidate, evidence, events: rawEvents } = verifiable;
 
     // Parse optional events first — fail closed before any hash work if malformed.
     const events = parseEvents(rawEvents);
@@ -165,6 +265,15 @@ export function verifyReceipt(value: unknown): VerifyResult {
       return {
         outcome: "events_malformed",
         detail: "events field is present but not an array of records",
+      };
+    }
+
+    // A bundle that names its TrueForge session has promised event evidence;
+    // verifying its hashes alone would certify a run nobody can inspect.
+    if (evidence !== undefined && events === undefined) {
+      return {
+        outcome: "events_missing",
+        detail: "evidence names a session but no events were provided or fetched",
       };
     }
 
@@ -223,7 +332,7 @@ export function verifyReceipt(value: unknown): VerifyResult {
 
     // Optional event-stream checks.
     if (events !== undefined) {
-      const eventFailure = checkEvents(events);
+      const eventFailure = checkEvents(events, evidence, receipt);
       if (eventFailure !== null) return eventFailure;
     }
 

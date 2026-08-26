@@ -368,13 +368,20 @@ describe("verify-receipt: event ordering failures", () => {
     expect(result.outcome).toBe("user_approval_missing");
   });
 
-  it("returns user_approval_missing when no user.tool_approval event exists", () => {
+  // trueforge 0.1.4 does not persist the user's decision, so a stream with no
+  // user.tool_approval events falls back to structural evidence: a denial
+  // leaves its error marker on the gated response and must still fail.
+  it("returns user_approval_missing when the gated response records a denial", () => {
     const { verifiable } = buildValidReceipt();
     const result = verifyReceipt({
       ...verifiable,
       events: [
         { type: TF_EVENT_TOOL_APPROVAL_REQUIRED, tool_calls: [{ id: "tc-1" }] },
-        { type: TF_EVENT_TOOL_RESPONSE, tool_call_id: "tc-1" },
+        {
+          type: TF_EVENT_TOOL_RESPONSE,
+          tool_call_id: "tc-1",
+          content: '{"error":"User denied tool call: no reason provided"}',
+        },
       ],
     });
     expect(result.outcome).toBe("user_approval_missing");
@@ -402,20 +409,125 @@ describe("verify-receipt: event ordering failures", () => {
   });
 
   // Ordering must be judged on real indices into events: a filtered view
-  // shifted positions leftward, so one type-less event false-failed a
-  // correctly ordered stream.
-  it("passes a correctly ordered stream that contains a type-less event", () => {
+  // shifted positions leftward, so an unrecognised event type false-failed a
+  // correctly ordered stream. Real TrueForge streams carry many types the
+  // verifier does not interpret (model.message, turn.done, ...).
+  it("passes a correctly ordered stream that contains unrecognised event types", () => {
     const { verifiable } = buildValidReceipt();
     const result = verifyReceipt({
       ...verifiable,
       events: [
-        { note: "heartbeat without a type field" },
+        { type: "model.message", content: "planning" },
+        { type: TF_EVENT_TOOL_APPROVAL_REQUIRED, tool_calls: [{ id: "tc-1" }] },
+        { type: "turn.paused" },
+        { type: TF_EVENT_USER_TOOL_APPROVAL, tool_call_id: "tc-1", approval: { status: "allow" } },
+        { type: TF_EVENT_TOOL_RESPONSE, tool_call_id: "tc-1" },
+        { type: "turn.done" },
+      ],
+    });
+    expect(result.outcome).toBe("pass");
+  });
+
+  // A record without a string type is not a TrueForge event; skipping it
+  // would let evidence hide inside the stream unexamined.
+  it("returns events_malformed for an event without a string type", () => {
+    const { verifiable } = buildValidReceipt();
+    const result = verifyReceipt({
+      ...verifiable,
+      events: [
+        { note: "no type field" },
         { type: TF_EVENT_TOOL_APPROVAL_REQUIRED, tool_calls: [{ id: "tc-1" }] },
         { type: TF_EVENT_USER_TOOL_APPROVAL, tool_call_id: "tc-1", approval: { status: "allow" } },
         { type: TF_EVENT_TOOL_RESPONSE, tool_call_id: "tc-1" },
       ],
     });
+    expect(result.outcome).toBe("events_malformed");
+  });
+});
+
+// ---- Session binding: evidence requires events ------------------------------
+
+describe("verify-receipt: session-bound evidence", () => {
+  // A session-bound stream must WITNESS the receipt: the gated post-approval
+  // response carries the receipt id and both hashes, the way a real
+  // trueforge release_result response does.
+  function boundEvents(verifiable: ReturnType<typeof buildValidReceipt>["verifiable"]) {
+    const { receiptId, contractHash, outputHash } = verifiable.receipt;
+    return [
+      { type: TF_EVENT_TOOL_APPROVAL_REQUIRED, tool_calls: [{ id: "tc-1" }] },
+      { type: TF_EVENT_USER_TOOL_APPROVAL, tool_call_id: "tc-1", approval: { status: "allow" } },
+      {
+        type: TF_EVENT_TOOL_RESPONSE,
+        tool_call_id: "tc-1",
+        content: JSON.stringify({ receipt: { receiptId, contractHash, outputHash } }),
+      },
+    ];
+  }
+
+  it("passes a bundle whose evidence and events agree", () => {
+    const { verifiable } = buildValidReceipt();
+    const result = verifyReceipt({
+      ...verifiable,
+      evidence: { sessionId: "sess-1", turnIds: ["turn-1"] },
+      events: boundEvents(verifiable).map((event) => ({
+        ...event,
+        session_id: "sess-1",
+        turn_id: "turn-1",
+      })),
+    });
     expect(result.outcome).toBe("pass");
+  });
+
+  it("returns events_missing when evidence names a session but no events exist", () => {
+    const { verifiable } = buildValidReceipt();
+    const result = verifyReceipt({
+      ...verifiable,
+      evidence: { sessionId: "sess-1", turnIds: ["turn-1"] },
+    });
+    expect(result.outcome).toBe("events_missing");
+  });
+
+  it("returns receipt_unwitnessed when no gated response carries the receipt", () => {
+    const { verifiable } = buildValidReceipt();
+    const events = boundEvents(verifiable);
+    const witness = events[2] as { content: string };
+    const result = verifyReceipt({
+      ...verifiable,
+      evidence: { sessionId: "sess-1", turnIds: ["turn-1"] },
+      events: [events[0], events[1], { ...events[2], content: witness.content.slice(0, 20) }],
+    });
+    expect(result.outcome).toBe("receipt_unwitnessed");
+  });
+
+  it("returns session_mismatch when an event names another session or turn", () => {
+    const { verifiable } = buildValidReceipt();
+    const events = boundEvents(verifiable);
+    const otherSession = verifyReceipt({
+      ...verifiable,
+      evidence: { sessionId: "sess-1", turnIds: ["turn-1"] },
+      events: [{ ...events[0], session_id: "sess-2" }, ...events.slice(1)],
+    });
+    expect(otherSession.outcome).toBe("session_mismatch");
+    const otherTurn = verifyReceipt({
+      ...verifiable,
+      evidence: { sessionId: "sess-1", turnIds: ["turn-1"] },
+      events: [{ ...events[0], turn_id: "turn-9" }, ...events.slice(1)],
+    });
+    expect(otherTurn.outcome).toBe("session_mismatch");
+  });
+
+  it("returns receipt_malformed for malformed evidence", () => {
+    const { verifiable } = buildValidReceipt();
+    for (const evidence of [
+      { sessionId: "", turnIds: ["turn-1"] },
+      { sessionId: "sess-1", turnIds: [] },
+      { sessionId: "sess-1", turnIds: ["turn-1"], extra: true },
+      { sessionId: "sess-1" },
+      "sess-1",
+    ]) {
+      const result = verifyReceipt({ ...verifiable, evidence, events: boundEvents(verifiable) });
+      expect(result.outcome, JSON.stringify(evidence)).toBe("receipt_malformed");
+    }
   });
 });
 
