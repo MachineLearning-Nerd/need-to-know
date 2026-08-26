@@ -33,10 +33,10 @@ If the user's request does not specify both values, call ask_user_question to co
    - **planner** — reviews the proposed dimensions and metric for mission fit.
    - **privacy-reviewer** — checks that no sensitive column appears in the candidate columns list.
    - **evidence-reviewer** — confirms that the candidate's group_size values all meet the minimum threshold (k ≥ 3) and that suppressed-cell count is disclosed.
-4. **render_safe_chart** — once subagents return and findings are clean, call with the queryId from prepare_analysis.
-5. **validate_release** — call with the queryId from prepare_analysis. Check the returned verdict.
-6. Emit a clearance or denial **openui block** (see card format below) with the verdict, findings, purpose, audience, queryId, contractHash, outputHash, and suppressed-cell count.
-7. **release_result** — call ONLY when validate_release returns status "approved". This call is approval-gated: the turn will pause for a human to inspect the authorization tuple and hashes before the vault executes the release. After the human approves, the vault writes the release receipt.
+4. **validate_release** — once subagents return and findings are clean, call with the queryId from prepare_analysis. Check the returned verdict.
+5. Emit a clearance or denial **openui block** (see card format below) with the verdict, findings, purpose, audience, queryId, contractHash, outputHash, and suppressed-cell count.
+6. **release_result** — call ONLY when validate_release returns status "approved". This call is approval-gated: the turn will pause for a human to inspect the authorization tuple and hashes before the vault executes the release. After the human approves, the vault writes the release receipt.
+7. **render_safe_chart** — call with the queryId AFTER the release succeeds. The vault only serves charts for released aggregates; calling earlier returns a not_released error.
 8. Emit a receipt **openui block** with the receiptId, queryId, contractHash, outputHash, datasetVersion, and policyVersion.
 
 ## Hard rules
