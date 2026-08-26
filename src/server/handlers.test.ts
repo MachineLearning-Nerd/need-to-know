@@ -468,6 +468,25 @@ describe("fail-closed hardening", () => {
     expect(store2.getPrepared(first.queryId)).toBeUndefined();
   });
 
+  it("never evicts a released entry: its chart survives 500 later preparations", () => {
+    const store2 = createVaultStore();
+    const handlers2 = createVaultHandlers(db, store2);
+    const released = payload(
+      handlers2.prepareAnalysis({ ...goodMission, dimensions: ["week"], metric: "ticket_count" }),
+    ) as unknown as { queryId: string };
+    const verdict = payload(handlers2.validateRelease({ queryId: released.queryId })) as unknown as {
+      contractHash: string;
+      outputHash: string;
+    };
+    handlers2.releaseResult({ queryId: released.queryId, ...verdict });
+    for (let index = 0; index < 500; index += 1) {
+      handlers2.prepareAnalysis({ ...goodMission, dimensions: ["week"], metric: "ticket_count" });
+    }
+    const chart = handlers2.renderSafeChart({ queryId: released.queryId });
+    expect(chart.isError).toBeUndefined();
+    expect(payload(chart)).toMatchObject({ queryId: released.queryId });
+  });
+
   it("stores frozen copies of findings, immune to mutation of the originals", () => {
     const original = { code: "evidence_mismatch" as const };
     store.recordAudit("q-frozen", "denied", [original]);

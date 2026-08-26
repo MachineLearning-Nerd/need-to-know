@@ -91,11 +91,18 @@ export function createVaultStore(): VaultStore {
       });
       prepared.set(queryId, entry);
       // Bounded: a caller can drive prepare_analysis in a loop and every entry
-      // retains its rows. The audit log deliberately stays uncapped — dropping
-      // enforcement records to save memory would be fail-open.
+      // retains its rows. Eviction only ever drops unreleased candidates — a
+      // receipt is a promise that render_safe_chart can still serve the
+      // released rows, so released entries are pinned for the process
+      // lifetime, the same deliberate trade as the receipts themselves. The
+      // audit log likewise stays uncapped — dropping enforcement records to
+      // save memory would be fail-open.
       if (prepared.size > MAX_PREPARED_ENTRIES) {
-        const oldest = prepared.keys().next();
-        if (!oldest.done) prepared.delete(oldest.value);
+        for (const queryId of prepared.keys()) {
+          if (receipts.has(queryId)) continue;
+          prepared.delete(queryId);
+          break;
+        }
       }
       return entry;
     },
