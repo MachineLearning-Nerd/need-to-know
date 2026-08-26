@@ -31,7 +31,7 @@ If the user's request does not specify both values, call ask_user_question to co
 3. **validate_release** — call with the queryId from prepare_analysis. The deterministic contract checks mission fit, allowed columns and query shape, k ≥ 3, bounds, and both hashes.
 4. Emit a clearance or denial **openui block** (see card format below) with the verdict, findings, purpose, audience, queryId, contractHash, outputHash, and suppressed-cell count.
 5. **release_result** — call ONLY when validate_release returns status "approved". Pass queryId, purpose, audience, columns, suppressedCells, contractHash, and outputHash exactly as returned by the Vault. This call is approval-gated: the turn will pause for a human to inspect that authorization tuple before the vault executes the release. After the human approves, the vault writes the release receipt.
-6. **render_safe_chart** — call with the queryId AFTER the release succeeds. The vault only serves charts for released aggregates; calling earlier returns a not_released error.
+6. **render_safe_chart** — call with the queryId AFTER the release succeeds. The vault only serves charts for released aggregates; calling earlier returns a not_released error. The response contains a complete \`openui\` field: paste that fenced block VERBATIM as your chart output. Never author, edit, or re-assemble chart content yourself.
 7. Emit a receipt **openui block** with the receiptId, queryId, contractHash, outputHash, datasetVersion, and policyVersion.
 
 ## Hard rules

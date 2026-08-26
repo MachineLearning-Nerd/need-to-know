@@ -8,6 +8,7 @@ import {
 import { ALLOWED_METRICS } from "../contract/queryPlan.js";
 import { GROUP_SIZE_FIELD, MAX_RELEASE_ROWS, MIN_GROUP_SIZE } from "../contract/rows.js";
 import { validateRelease, verifyRelease } from "../contract/validate.js";
+import { renderChartBlock } from "../render/chart.js";
 import type { AggregateMetric, VaultDatabase } from "../vault/database.js";
 import { COLUMN_SENSITIVITY, DATASET_VERSION, SAFE_DIMENSIONS } from "../vault/schema.js";
 import { errorResult, jsonResult, type ReleaseResultInput, type VaultToolHandlers } from "./mcp.js";
@@ -274,6 +275,7 @@ export function createVaultHandlers(db: VaultDatabase, store: VaultStore): Vault
         return errorResult("not_released");
       }
       const { candidate } = entry;
+      const rows = projectReleasedRows(candidate);
       return jsonResult({
         queryId: entry.queryId,
         receiptId: receipt.receiptId,
@@ -281,7 +283,18 @@ export function createVaultHandlers(db: VaultDatabase, store: VaultStore): Vault
         dimensions: candidate.queryPlan.dimensions,
         metric: candidate.queryPlan.metric,
         columns: candidate.columns,
-        rows: projectReleasedRows(candidate),
+        rows,
+        // Vault-authored card: the complete OpenUI block, rendered
+        // deterministically from the released aggregate. The agent pastes it
+        // verbatim — chart values never pass through the model.
+        openui: renderChartBlock({
+          receiptId: receipt.receiptId,
+          dimensions: candidate.queryPlan.dimensions,
+          metric: candidate.queryPlan.metric,
+          columns: candidate.columns,
+          rows,
+          suppressedCells: entry.suppressedCells,
+        }),
       });
     },
   };
