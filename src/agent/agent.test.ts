@@ -162,6 +162,23 @@ describe("clearanceCard", () => {
     expect(card).toContain('\\"with\\"');
     expect(card).not.toMatch(/[^\\]"with[^\\]"/);
   });
+
+  // A trailing backslash would neutralise the closing quote and a newline
+  // would start a fresh OpenUI statement -- both are injection vectors, not
+  // formatting quirks.
+  it("neutralises backslash and newline injection in values", () => {
+    const card = clearanceCard({
+      ...approvedInput,
+      contractHash: "x\\",
+      queryId: 'a\nCallout("injected")',
+    });
+    expect(card).toContain('"x\\\\"');
+    expect(card).not.toContain('\nCallout("injected")');
+    for (const line of card.split("\n")) {
+      // Every KeyValue line must still parse as exactly one statement.
+      expect(line).not.toMatch(/[^\\](\\\\)*\\$/);
+    }
+  });
 });
 
 describe("receiptCard", () => {

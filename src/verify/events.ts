@@ -70,6 +70,55 @@ export async function fetchTurnEvents(
   }
 }
 
+const TURN_PAGE_LIMIT = 25;
+
+// The session's ACTUAL turn list, paginated at the server's 25-turn cap with
+// the same fail-closed rules as the event fetch. Callers compare this against
+// a bundle's claimed turnIds — verifying only the claimed turns would let a
+// crafted bundle omit the turn holding a denial or a canary leak.
+export async function listSessionTurnIds(
+  baseUrl: string,
+  sessionId: string,
+): Promise<
+  | { readonly ok: true; readonly turnIds: string[] }
+  | {
+      readonly ok: false;
+      readonly reason: "events_unavailable" | "events_partial";
+      readonly detail: string;
+    }
+> {
+  const route = `${baseUrl}/api/v1/sessions/${sessionId}/turns`;
+  const turnIds: string[] = [];
+  try {
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const body = await getJson(
+        `${route}?limit=${TURN_PAGE_LIMIT}&offset=${page * TURN_PAGE_LIMIT}`,
+      );
+      const rows = rowsOf(body);
+      if (rows === null) {
+        return { ok: false, reason: "events_unavailable", detail: "turn list is not an array" };
+      }
+      if (page > 0 && rows.length > 0 && rows[0]?.id !== undefined && rows[0]?.id === turnIds[0]) {
+        return {
+          ok: false,
+          reason: "events_partial",
+          detail: "turn pagination not honoured; refusing a possibly truncated list",
+        };
+      }
+      for (const row of rows) {
+        if (typeof row.id !== "string") {
+          return { ok: false, reason: "events_unavailable", detail: "turn row without an id" };
+        }
+        turnIds.push(row.id);
+      }
+      if (rows.length < TURN_PAGE_LIMIT) return { ok: true, turnIds };
+    }
+    return { ok: false, reason: "events_partial", detail: `more than ${MAX_PAGES} turn pages` };
+  } catch (error) {
+    return { ok: false, reason: "events_unavailable", detail: (error as Error).message };
+  }
+}
+
 // Fetch events for every turn in order; any turn failing closed fails the lot.
 export async function fetchSessionEvents(
   baseUrl: string,

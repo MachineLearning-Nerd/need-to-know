@@ -48,7 +48,13 @@ async function tolerateConflict(work: Promise<unknown>, label: string): Promise<
     process.stdout.write(`setup-trueforge: registered ${label}\n`);
   } catch (error) {
     if ((error as { status?: number }).status === 409) {
-      process.stdout.write(`setup-trueforge: ${label} already registered\n`);
+      // Existing configuration is KEPT, not updated: settings routes on
+      // trueforge 0.1.4 have no validated update path (name-based routes can
+      // silently no-op), so a rotated key or changed URL needs the old entry
+      // deleted in TrueForge settings first.
+      process.stdout.write(
+        `setup-trueforge: ${label} already registered — existing configuration left unchanged\n`,
+      );
       return;
     }
     throw error;

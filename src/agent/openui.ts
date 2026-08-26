@@ -26,8 +26,18 @@ export type ReceiptCardInput = {
   readonly policyVersion: string;
 };
 
+// Backslashes first, then quotes: escaping quotes alone lets a value ending
+// in a backslash neutralise its own closing quote and inject OpenUI source.
+// Statements are one line each, so newlines and control characters cannot be
+// represented and are flattened to spaces.
 function escapeValue(value: string | number): string {
-  return String(value).replace(/"/g, '\\"');
+  return (
+    String(value)
+      .replace(/\\/g, "\\\\")
+      .replace(/"/g, '\\"')
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: flattening control chars is the point
+      .replace(/[\u0000-\u001f\u007f]/g, " ")
+  );
 }
 
 // Approved clearance card: purpose/audience tuple and both hashes are in the

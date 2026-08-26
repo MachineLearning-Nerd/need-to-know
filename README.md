@@ -44,21 +44,16 @@ npm run start-vault            # listens on http://localhost:8788/mcp
 **Step 2 — register the vault and agent in TrueForge:**
 
 ```bash
-# Register the Vault MCP server (run once, or after TrueForge restarts)
-curl -s -X POST http://localhost:8890/api/v1/settings/mcp-servers \
-  -H 'content-type: application/json' \
-  -d '{"manifest":{"type":"remote","name":"vault","url":"http://localhost:8788/mcp","description":"Need-to-Know synthetic vault"}}'
-
-# Register the agent (run once; see src/agent/manifest.ts for the full schema)
-# Replace <provider> and <model-id> with your TrueForge model provider and model.
-curl -s -X POST http://localhost:8890/api/v1/agents \
-  -H 'content-type: application/json' \
-  -d '{"name":"need-to-know","manifest":{...}}'
+# Registers the model provider, the vault MCP server, and the agent in one
+# idempotent pass (409 = already registered; the agent is upserted by id).
+ZAI_API_KEY=<key> TRUEFORGE_BASE_URL=http://localhost:8890 npm run setup-trueforge
 ```
 
-The `buildAgentManifest(provider, modelId)` function in `src/agent/manifest.ts` produces the exact manifest object for the POST body.
+The manifest comes from `buildAgentManifest(provider, modelId)` in `src/agent/manifest.ts`; the script is `scripts/setup-trueforge.ts`. Base URLs must use `localhost` — trueforge 0.1.4 listens on IPv6 only and refuses `127.0.0.1`.
 
 **Step 3 — open the TrueForge UI** at `http://localhost:8890` and start a session with the `need-to-know` agent.
+
+**Optional — live gates:** `npm run gate-a` proves the deny/allow approval flow against the running server and writes a verifiable bundle; `npm run gate-b` re-checks the persisted events for canary and raw-PII absence.
 
 ### Verifying a release receipt
 

@@ -81,6 +81,24 @@ describe("fetchTurnEvents", () => {
   });
 });
 
+describe("listSessionTurnIds", () => {
+  it("lists turns and fails closed when pagination is ignored", async () => {
+    const { listSessionTurnIds } = await import("./events.js");
+    const short = await serve(({ offset }) => ({
+      data: offset === 0 ? [{ id: "t-1" }, { id: "t-2" }] : [],
+    }));
+    const listed = await listSessionTurnIds(short, "s-1");
+    expect(listed).toEqual({ ok: true, turnIds: ["t-1", "t-2"] });
+  });
+
+  it("fails closed on a turn row without an id", async () => {
+    const { listSessionTurnIds } = await import("./events.js");
+    const base = await serve(() => ({ data: [{ notId: true }] }));
+    const listed = await listSessionTurnIds(base, "s-1");
+    expect(listed).toMatchObject({ ok: false, reason: "events_unavailable" });
+  });
+});
+
 describe("fetchSessionEvents", () => {
   it("concatenates turns in order and fails the lot on one bad turn", async () => {
     const base = await serve(({ offset }) => ({ data: offset === 0 ? [event(0)] : [] }));

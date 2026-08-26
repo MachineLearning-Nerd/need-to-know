@@ -31,7 +31,7 @@
 
 import { readFileSync } from "node:fs";
 
-import { fetchSessionEvents } from "./events.js";
+import { fetchSessionEvents, listSessionTurnIds } from "./events.js";
 import { verifyReceipt } from "./verify.js";
 
 function readInput(args: string[]): string {
@@ -74,7 +74,27 @@ async function main(args: string[]): Promise<void> {
     Array.isArray(evidence.turnIds) &&
     evidence.turnIds.every((turnId) => typeof turnId === "string")
   ) {
-    const fetched = await fetchSessionEvents(baseUrl, evidence.sessionId, evidence.turnIds);
+    // The claimed turn list must equal the session's ACTUAL turn list —
+    // fetching only the claimed turns would let a crafted bundle omit the
+    // turn holding a denial or a canary leak and still verify live.
+    const actual = await listSessionTurnIds(baseUrl, evidence.sessionId);
+    if (!actual.ok) {
+      process.stdout.write(
+        `verify-receipt: FAIL outcome=${actual.reason} detail=${actual.detail}\n`,
+      );
+      process.exit(1);
+    }
+    const claimed = new Set(evidence.turnIds as string[]);
+    if (
+      actual.turnIds.length !== claimed.size ||
+      !actual.turnIds.every((turnId) => claimed.has(turnId))
+    ) {
+      process.stdout.write(
+        "verify-receipt: FAIL outcome=session_mismatch detail=bundle turn list differs from the session's persisted turns\n",
+      );
+      process.exit(1);
+    }
+    const fetched = await fetchSessionEvents(baseUrl, evidence.sessionId, actual.turnIds);
     if (!fetched.ok) {
       process.stdout.write(
         `verify-receipt: FAIL outcome=${fetched.reason} detail=${fetched.detail}\n`,
