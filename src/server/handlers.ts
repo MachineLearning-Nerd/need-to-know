@@ -182,7 +182,10 @@ export function createVaultHandlers(db: VaultDatabase, store: VaultStore): Vault
       // element would make a malformed-plan denial fire ahead of the
       // allowlist and swallow the audit record, so a caller could name every
       // sensitive column and leave no trace. Both reaches are auditable even
-      // though no queryId exists yet.
+      // though no queryId exists yet — for every request that reaches this
+      // handler. One the tool schema rejects never gets here and is not
+      // audited; that error is identical whichever column was named, so it
+      // touches no data and carries no oracle.
       for (const dimension of dimensions) {
         if (!(SAFE_DIMENSIONS as readonly string[]).includes(dimension)) {
           store.recordAudit("-", "dimension_not_allowed");

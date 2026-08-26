@@ -17,8 +17,9 @@
 //   - output hash matches the recomputed candidate output hash
 //   - candidate passes the release contract policy
 //   - canary values are absent from the released rows
-//   - when events are present: approval precedes tool execution, no duplicates,
-//     canary absent from serialized event stream
+//   - when events are present: every gated tool call is requested AND granted
+//     by the user (user.tool_approval status "allow") before it executes, no
+//     duplicate approval requests, canary absent from the serialized stream
 //
 // It does NOT authenticate origin, verify external delivery, or guarantee that
 // the persisted-event witness and the local candidate are from the same session.
@@ -32,8 +33,9 @@ function readInput(args: string[]): string {
   if (filePath !== undefined && filePath !== "-") {
     return readFileSync(filePath, "utf8");
   }
-  // Read from stdin synchronously.
-  return readFileSync("/dev/stdin", "utf8");
+  // Read from stdin synchronously — file descriptor 0, not /dev/stdin,
+  // which does not exist on Windows.
+  return readFileSync(0, "utf8");
 }
 
 function main(args: string[]): void {

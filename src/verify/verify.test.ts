@@ -236,6 +236,23 @@ describe("verify-receipt: hash mismatch failures", () => {
     expect(result.outcome).toBe("candidate_malformed");
   });
 
+  // The hashes bind the receipt to the candidate's content; queryId and the
+  // two versions bind it to the candidate's identity. A receipt naming the
+  // wrong query or versions must not verify even with perfect hashes.
+  it("returns receipt_metadata_mismatch when the receipt names another query", () => {
+    const { verifiable } = buildValidReceipt();
+    const wrongQuery = verifyReceipt({
+      ...verifiable,
+      receipt: { ...verifiable.receipt, queryId: "q-999" },
+    });
+    expect(wrongQuery.outcome).toBe("receipt_metadata_mismatch");
+    const wrongVersion = verifyReceipt({
+      ...verifiable,
+      receipt: { ...verifiable.receipt, datasetVersion: "forged-v9" },
+    });
+    expect(wrongVersion.outcome).toBe("receipt_metadata_mismatch");
+  });
+
   it("returns candidate_malformed when candidate is null", () => {
     const { verifiable } = buildValidReceipt();
     const result = verifyReceipt({ ...verifiable, candidate: null });
@@ -246,42 +263,42 @@ describe("verify-receipt: hash mismatch failures", () => {
 // ---- Negative tests: canary containment ------------------------------------
 
 describe("verify-receipt: canary containment failures", () => {
-  it("returns canary_in_rows when the canary email appears in a candidate row", () => {
-    // Build a candidate that passes hashing but has the canary in a row value.
-    // We force this by constructing a fresh candidate via validateRelease with
-    // modified rows that include the canary — the hashes won't match the receipt,
-    // so we compute matching hashes manually.
-    const store = createVaultStore();
-    const handlers = createVaultHandlers(db, store);
+  // The canary_in_rows branch is defence in depth, and today it is
+  // unreachable through an approved candidate: the contract pins every string
+  // field a canary could ride — dimension values and provenance.queryId to
+  // domains, versions to compiled-in constants, purpose and audience to the
+  // mission — so every carrier we could construct (region value,
+  // datasetVersion, provenance.queryId) is denied before the scan runs. The
+  // scan stays because a future contract relaxation must not silently open a
+  // canary path; these tests pin the denials that currently stand in front of
+  // it, for both canary values.
+  it("returns candidate_denied when the canary free text is smuggled into a row", () => {
+    const { verifiable } = buildValidReceipt();
+    const candidate = verifiable.candidate as Record<string, unknown>;
+    const rows = (candidate.rows as Array<Record<string, unknown>>).map((row, index) =>
+      index === 0 ? { ...row, region: CANARY.freeText } : row,
+    );
+    const tampered = { ...candidate, rows };
+    expect(validateRelease(tampered).status).toBe("denied");
+    // A policy denial short-circuits before hash comparison, so the original
+    // receipt hashes serve unchanged.
+    const result = verifyReceipt({ ...verifiable, candidate: tampered });
+    expect(result.outcome).toBe("candidate_denied");
+    if (result.outcome === "candidate_denied") {
+      expect(result.detail).toContain("value_out_of_domain");
+    }
+  });
 
-    // Use a real prepared entry and smuggle the canary into it.
-    const prepResult = handlers.prepareAnalysis({
-      purpose: "weekly support trend",
-      audience: "support leadership",
-      dimensions: ["week", "region"],
-      metric: "ticket_count",
-    });
-    const prepBody = JSON.parse(prepResult.content[0]?.text ?? "{}") as {
-      queryId: string;
-      candidate: Record<string, unknown>;
-    };
-
-    // Inject canary into a dimension value (region relabeled to canary email).
-    const rows = (prepBody.candidate.rows as Array<Record<string, unknown>>).map((row, index) =>
+  it("returns candidate_denied when the canary email is smuggled into a row", () => {
+    const { verifiable } = buildValidReceipt();
+    const candidate = verifiable.candidate as Record<string, unknown>;
+    const rows = (candidate.rows as Array<Record<string, unknown>>).map((row, index) =>
       index === 0 ? { ...row, region: CANARY.email } : row,
     );
-    const candidateWithCanary = { ...prepBody.candidate, rows };
-
-    // Compute the hashes for this tampered candidate to get a "passing" pair.
-    const validation = validateRelease(candidateWithCanary);
-    if (validation.status !== "denied") {
-      // The canary email ends in ".invalid" and contains "@" — value_contains_contact_pattern
-      // will deny it, so we confirm the denial is for that reason.
-      expect(["denied", "needs_review"]).toContain(validation.status);
-      // In this case the candidate is already denied — our check catches it as candidate_denied.
-      return;
-    }
-    // If somehow the tampered candidate passes (unlikely), check canary_in_rows.
+    const tampered = { ...candidate, rows };
+    expect(validateRelease(tampered).status).toBe("denied");
+    const result = verifyReceipt({ ...verifiable, candidate: tampered });
+    expect(result.outcome).toBe("candidate_denied");
   });
 
   it("returns canary_in_events when the canary email appears in events", () => {
@@ -333,6 +350,72 @@ describe("verify-receipt: event ordering failures", () => {
     const { verifiable } = buildValidReceipt();
     const result = verifyReceipt({ ...verifiable, events: ["string-element"] });
     expect(result.outcome).toBe("events_malformed");
+  });
+
+  // The agent asking is not the user allowing: a transcript where the user
+  // explicitly denied — or never answered — and the tool ran anyway is the
+  // exact evidence this verifier exists to reject.
+  it("returns user_approval_missing when the user denied and the tool ran anyway", () => {
+    const { verifiable } = buildValidReceipt();
+    const result = verifyReceipt({
+      ...verifiable,
+      events: [
+        { type: TF_EVENT_TOOL_APPROVAL_REQUIRED, tool_calls: [{ id: "tc-1" }] },
+        { type: TF_EVENT_USER_TOOL_APPROVAL, tool_call_id: "tc-1", approval: { status: "deny" } },
+        { type: TF_EVENT_TOOL_RESPONSE, tool_call_id: "tc-1" },
+      ],
+    });
+    expect(result.outcome).toBe("user_approval_missing");
+  });
+
+  it("returns user_approval_missing when no user.tool_approval event exists", () => {
+    const { verifiable } = buildValidReceipt();
+    const result = verifyReceipt({
+      ...verifiable,
+      events: [
+        { type: TF_EVENT_TOOL_APPROVAL_REQUIRED, tool_calls: [{ id: "tc-1" }] },
+        { type: TF_EVENT_TOOL_RESPONSE, tool_call_id: "tc-1" },
+      ],
+    });
+    expect(result.outcome).toBe("user_approval_missing");
+  });
+
+  // Only gated calls need approval-before-response: a real session answers
+  // describe_dataset and prepare_analysis long before release_result asks.
+  it("passes a full-session transcript with ungated responses before the approval", () => {
+    const { verifiable } = buildValidReceipt();
+    const result = verifyReceipt({
+      ...verifiable,
+      events: [
+        { type: TF_EVENT_TOOL_RESPONSE, tool_call_id: "tc-describe" },
+        { type: TF_EVENT_TOOL_RESPONSE, tool_call_id: "tc-prepare" },
+        { type: TF_EVENT_TOOL_APPROVAL_REQUIRED, tool_calls: [{ id: "tc-release" }] },
+        {
+          type: TF_EVENT_USER_TOOL_APPROVAL,
+          tool_call_id: "tc-release",
+          approval: { status: "allow" },
+        },
+        { type: TF_EVENT_TOOL_RESPONSE, tool_call_id: "tc-release" },
+      ],
+    });
+    expect(result.outcome).toBe("pass");
+  });
+
+  // Ordering must be judged on real indices into events: a filtered view
+  // shifted positions leftward, so one type-less event false-failed a
+  // correctly ordered stream.
+  it("passes a correctly ordered stream that contains a type-less event", () => {
+    const { verifiable } = buildValidReceipt();
+    const result = verifyReceipt({
+      ...verifiable,
+      events: [
+        { note: "heartbeat without a type field" },
+        { type: TF_EVENT_TOOL_APPROVAL_REQUIRED, tool_calls: [{ id: "tc-1" }] },
+        { type: TF_EVENT_USER_TOOL_APPROVAL, tool_call_id: "tc-1", approval: { status: "allow" } },
+        { type: TF_EVENT_TOOL_RESPONSE, tool_call_id: "tc-1" },
+      ],
+    });
+    expect(result.outcome).toBe("pass");
   });
 });
 

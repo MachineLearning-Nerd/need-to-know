@@ -17,8 +17,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "format": "biome format --write .",
-    "verify-receipt": "node --experimental-strip-types --loader=./scripts/ts-loader.mjs src/verify/cli.ts",
-    "start-vault": "node --experimental-strip-types --loader=./scripts/ts-loader.mjs scripts/start-vault.ts"
+    "verify-receipt": "node --import ./scripts/register-ts-loader.mjs src/verify/cli.ts",
+    "start-vault": "node --import ./scripts/register-ts-loader.mjs scripts/start-vault.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
