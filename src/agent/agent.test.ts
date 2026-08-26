@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { ALLOWED_AUDIENCE, ALLOWED_PURPOSE, POLICY_VERSION } from "../contract/policy.js";
-import { DATASET_VERSION } from "../vault/schema.js";
+import { ALLOWED_AUDIENCE, ALLOWED_PURPOSE } from "../contract/policy.js";
+import { CANARY } from "../vault/seed.js";
 import { buildAgentManifest } from "./manifest.js";
-import { clearanceCard, receiptCard } from "./openui.js";
 import { ROOT_AGENT_PROMPT } from "./prompt.js";
-import { EVIDENCE_REVIEWER_PROMPT, PLANNER_PROMPT, PRIVACY_REVIEWER_PROMPT } from "./subagents.js";
 
 // Root prompt invariants — these are behavioral guarantees, not formatting
 // preferences. Any edit to prompt.ts must preserve them.
@@ -26,14 +24,20 @@ describe("ROOT_AGENT_PROMPT", () => {
     expect(ROOT_AGENT_PROMPT).toMatch(/ONLY when validate_release returns/);
   });
 
-  it("names three parallel subagents", () => {
-    expect(ROOT_AGENT_PROMPT).toContain("planner");
-    expect(ROOT_AGENT_PROMPT).toContain("privacy-reviewer");
-    expect(ROOT_AGENT_PROMPT).toContain("evidence-reviewer");
+  it("forbids subagents because pinned children inherit root Vault tools", () => {
+    expect(ROOT_AGENT_PROMPT).toContain("Do not create subagents");
   });
 
   it("forbids raw rows, emails, phones, and free text in output", () => {
     expect(ROOT_AGENT_PROMPT).toMatch(/NEVER.*leave.*vault|NEVER appear/);
+  });
+
+  it("keeps the Vault canary values out of model-visible instructions", () => {
+    const manifestText = JSON.stringify(buildAgentManifest("zai", "glm-5.2"));
+    for (const canary of [CANARY.email, CANARY.freeText]) {
+      expect(ROOT_AGENT_PROMPT).not.toContain(canary);
+      expect(manifestText).not.toContain(canary);
+    }
   });
 
   it("instructs using ask_user_question when purpose or audience is missing", () => {
@@ -45,174 +49,27 @@ describe("ROOT_AGENT_PROMPT", () => {
   });
 });
 
-// Subagent prompt invariants — each subagent must return a typed JSON object
-// and must not be able to approve or deny a release.
-describe("PLANNER_PROMPT", () => {
-  it('includes the "planner" role field', () => {
-    expect(PLANNER_PROMPT).toContain('"planner"');
+describe("production OpenUI templates", () => {
+  const blocks = [...ROOT_AGENT_PROMPT.matchAll(/```openui\n([\s\S]*?)\n```/g)].map(
+    (match) => match[1] ?? "",
+  );
+
+  it("defines a pinned-runtime root in every card", () => {
+    expect(blocks).toHaveLength(3);
+    for (const block of blocks) expect(block).toContain("root = Stack(");
   });
 
-  it("names the allowed dimensions", () => {
-    expect(PLANNER_PROMPT).toContain("week");
-    expect(PLANNER_PROMPT).toContain("region");
-    expect(PLANNER_PROMPT).toContain("category");
+  it("uses only components present in the pinned OpenUI instructions", () => {
+    expect(ROOT_AGENT_PROMPT).not.toContain("KeyValue(");
+    expect(ROOT_AGENT_PROMPT).toContain("TextContent(");
+    expect(ROOT_AGENT_PROMPT).toContain('Callout("success",');
+    expect(ROOT_AGENT_PROMPT).toContain('Callout("error",');
   });
 
-  it("names the allowed metrics", () => {
-    expect(PLANNER_PROMPT).toContain("ticket_count");
-    expect(PLANNER_PROMPT).toContain("avg_resolution_hours");
-  });
-
-  it("forbids calling tools", () => {
-    expect(PLANNER_PROMPT).toContain("Do not call any tool");
-  });
-});
-
-describe("PRIVACY_REVIEWER_PROMPT", () => {
-  it('includes the "privacy-reviewer" role field', () => {
-    expect(PRIVACY_REVIEWER_PROMPT).toContain('"privacy-reviewer"');
-  });
-
-  it("names the four sensitive columns", () => {
-    for (const column of ["customer_id", "email", "phone", "free_text"]) {
-      expect(PRIVACY_REVIEWER_PROMPT).toContain(column);
-    }
-  });
-
-  it("forbids calling tools", () => {
-    expect(PRIVACY_REVIEWER_PROMPT).toContain("Do not call any tool");
-  });
-});
-
-describe("EVIDENCE_REVIEWER_PROMPT", () => {
-  it('includes the "evidence-reviewer" role field', () => {
-    expect(EVIDENCE_REVIEWER_PROMPT).toContain('"evidence-reviewer"');
-  });
-
-  it("references the minimum group size k >= 3", () => {
-    expect(EVIDENCE_REVIEWER_PROMPT).toContain("3");
-  });
-
-  it("requires suppressedCells to be disclosed", () => {
-    expect(EVIDENCE_REVIEWER_PROMPT).toContain("suppressedCells");
-  });
-
-  it("forbids calling tools", () => {
-    expect(EVIDENCE_REVIEWER_PROMPT).toContain("Do not call any tool");
-  });
-});
-
-// OpenUI card shape tests — the model is prompted to emit these strings;
-// tests confirm the helpers produce parseable, deterministic output.
-describe("clearanceCard", () => {
-  const approvedInput = {
-    status: "approved" as const,
-    purpose: ALLOWED_PURPOSE,
-    audience: ALLOWED_AUDIENCE,
-    queryId: "q-1",
-    contractHash: "abc123",
-    outputHash: "def456",
-    suppressedCells: 2,
-  };
-
-  it("opens with a fenced openui block", () => {
-    const card = clearanceCard(approvedInput);
-    expect(card).toMatch(/^```openui\n/);
-    expect(card).toMatch(/\n```$/);
-  });
-
-  it('sets header to "approved" for an approved verdict', () => {
-    expect(clearanceCard(approvedInput)).toContain('CardHeader("Release Clearance", "approved")');
-  });
-
-  it("includes purpose, audience, and both hashes for approved", () => {
-    const card = clearanceCard(approvedInput);
-    expect(card).toContain(ALLOWED_PURPOSE);
-    expect(card).toContain(ALLOWED_AUDIENCE);
-    expect(card).toContain("abc123");
-    expect(card).toContain("def456");
-  });
-
-  it("includes suppressed cell count for approved", () => {
-    expect(clearanceCard(approvedInput)).toContain("2");
-  });
-
-  it('sets header to "denied" for a denied verdict', () => {
-    const deniedCard = clearanceCard({ ...approvedInput, status: "denied" });
-    expect(deniedCard).toContain('CardHeader("Release Clearance", "denied")');
-  });
-
-  it("includes findings table when findings are present in denied card", () => {
-    const deniedCard = clearanceCard({
-      ...approvedInput,
-      status: "denied",
-      findings: [{ code: "mission_not_authorized", detail: "purpose_not_authorized" }],
-    });
-    expect(deniedCard).toContain("Table");
-    expect(deniedCard).toContain("mission_not_authorized");
-  });
-
-  it("omits findings table when no findings are present", () => {
-    const deniedCard = clearanceCard({ ...approvedInput, status: "denied" });
-    expect(deniedCard).not.toContain("Table");
-  });
-
-  it("escapes double quotes in hash values", () => {
-    const card = clearanceCard({ ...approvedInput, contractHash: 'hash"with"quotes' });
-    expect(card).toContain('\\"with\\"');
-    expect(card).not.toMatch(/[^\\]"with[^\\]"/);
-  });
-
-  // A trailing backslash would neutralise the closing quote and a newline
-  // would start a fresh OpenUI statement -- both are injection vectors, not
-  // formatting quirks.
-  it("neutralises backslash and newline injection in values", () => {
-    const card = clearanceCard({
-      ...approvedInput,
-      contractHash: "x\\",
-      queryId: 'a\nCallout("injected")',
-    });
-    expect(card).toContain('"x\\\\"');
-    expect(card).not.toContain('\nCallout("injected")');
-    for (const line of card.split("\n")) {
-      // Every KeyValue line must still parse as exactly one statement.
-      expect(line).not.toMatch(/[^\\](\\\\)*\\$/);
-    }
-  });
-});
-
-describe("receiptCard", () => {
-  const receiptInput = {
-    receiptId: "r-1",
-    queryId: "q-1",
-    contractHash: "abc123",
-    outputHash: "def456",
-    datasetVersion: DATASET_VERSION,
-    policyVersion: POLICY_VERSION,
-  };
-
-  it("opens with a fenced openui block", () => {
-    const card = receiptCard(receiptInput);
-    expect(card).toMatch(/^```openui\n/);
-    expect(card).toMatch(/\n```$/);
-  });
-
-  it('sets header to "released"', () => {
-    expect(receiptCard(receiptInput)).toContain('CardHeader("Release Receipt", "released")');
-  });
-
-  it("includes all receipt fields", () => {
-    const card = receiptCard(receiptInput);
-    expect(card).toContain("r-1");
-    expect(card).toContain("q-1");
-    expect(card).toContain("abc123");
-    expect(card).toContain("def456");
-    expect(card).toContain(DATASET_VERSION);
-    expect(card).toContain(POLICY_VERSION);
-  });
-
-  it("mentions verify-receipt CLI", () => {
-    expect(receiptCard(receiptInput)).toContain("verify-receipt");
+  it("keeps denial text to deterministic finding codes", () => {
+    expect(ROOT_AGENT_PROMPT).toContain("finding.code values only");
+    expect(ROOT_AGENT_PROMPT).not.toContain("{detail}");
+    expect(ROOT_AGENT_PROMPT).not.toContain("{rows}");
   });
 });
 
@@ -231,8 +88,8 @@ describe("buildAgentManifest", () => {
     expect(manifest.mcp_servers[0]?.enable_tools).toContain("@all");
   });
 
-  it("enables dynamic subagents", () => {
-    expect(manifest.config.dynamic_sub_agents.enabled).toBe(true);
+  it("disables dynamic subagents because pinned children inherit root Vault tools", () => {
+    expect(manifest.config.dynamic_sub_agents.enabled).toBe(false);
   });
 
   it("enables ask user questions", () => {
@@ -251,8 +108,8 @@ describe("buildAgentManifest", () => {
     expect(manifest.model.params.temperature).toBe(0);
   });
 
-  it("enables parallel_tool_calls for subagent fan-out", () => {
-    expect(manifest.model.params.parallel_tool_calls).toBe(true);
+  it("disables parallel tool calls for a sequential release flow", () => {
+    expect(manifest.model.params.parallel_tool_calls).toBe(false);
   });
 
   it("preloads the vault MCP server", () => {
@@ -263,9 +120,8 @@ describe("buildAgentManifest", () => {
     expect(manifest.model.name).toBe("zai/glm-5.2");
   });
 
-  it("accepts a custom vault MCP server name", () => {
-    const custom = buildAgentManifest("zai", "glm-5.2", "my-vault");
-    expect(custom.mcp_servers[0]?.name).toBe("my-vault");
+  it("pins the verifier's Vault MCP server name", () => {
+    expect(manifest.mcp_servers[0]?.name).toBe("vault");
   });
 
   it("embeds instructions from the root prompt", () => {

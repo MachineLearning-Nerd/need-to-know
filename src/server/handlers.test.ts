@@ -4,8 +4,8 @@ import { validateRelease } from "../contract/validate.js";
 import { openVaultDatabase, type VaultDatabase } from "../vault/database.js";
 import { CANARY, SMALL_CELL } from "../vault/seed.js";
 import { createVaultHandlers } from "./handlers.js";
-import type { VaultToolHandlers } from "./mcp.js";
-import { createVaultStore } from "./store.js";
+import type { ReleaseResultInput, VaultToolHandlers } from "./mcp.js";
+import { createVaultStore, type PreparedAnalysis } from "./store.js";
 
 let db: VaultDatabase;
 let aggregateCalls: number;
@@ -110,7 +110,7 @@ describe("prepare_analysis", () => {
         rows: Array<Record<string, string | number>>;
       };
     };
-    expect(entry.queryId).toMatch(/^q-\d+$/);
+    expect(entry.queryId).toMatch(/^q-[0-9a-f-]{36}$/);
     // Suppression runs once at the finest granularity, so the count reports
     // the fine cells withheld regardless of the granularity requested — the
     // same number for any dimension subset, which is what makes differencing
@@ -208,7 +208,27 @@ describe("prepare_analysis", () => {
   });
 });
 
-function prepareValidated(): { queryId: string; contractHash: string; outputHash: string } {
+function releaseInput(
+  entry: PreparedAnalysis,
+  hashes: { contractHash: string; outputHash: string },
+): ReleaseResultInput {
+  return {
+    queryId: entry.queryId,
+    purpose: entry.candidate.purpose,
+    audience: entry.candidate.audience,
+    columns: [...entry.candidate.columns],
+    suppressedCells: entry.suppressedCells,
+    ...hashes,
+  };
+}
+
+function preparedEntry(vaultStore: ReturnType<typeof createVaultStore>, queryId: string) {
+  const entry = vaultStore.getPrepared(queryId);
+  if (entry === undefined) throw new Error("prepared entry is missing");
+  return entry;
+}
+
+function prepareValidated(): ReleaseResultInput {
   const prepared = payload(
     handlers.prepareAnalysis({
       ...goodMission,
@@ -222,26 +242,25 @@ function prepareValidated(): { queryId: string; contractHash: string; outputHash
     outputHash: string;
   };
   expect(verdict.status).toBe("approved");
-  return { queryId: prepared.queryId, ...verdict };
+  return releaseInput(preparedEntry(store, prepared.queryId), verdict);
 }
 
 describe("release_result", () => {
   it("releases once with a receipt, then denies replay with a single audit trail", () => {
-    const { queryId, contractHash, outputHash } = prepareValidated();
-    const released = payload(
-      handlers.releaseResult({ queryId, contractHash, outputHash }),
-    ) as unknown as {
+    const input = prepareValidated();
+    const { queryId, contractHash } = input;
+    const released = payload(handlers.releaseResult(input)) as unknown as {
       receipt: { receiptId: string; contractHash: string; outputHash: string };
       rows: Array<Record<string, unknown>>;
     };
-    expect(released.receipt.receiptId).toMatch(/^r-\d+$/);
+    expect(released.receipt.receiptId).toMatch(/^r-[0-9a-f-]{36}$/);
     expect(released.receipt.contractHash).toBe(contractHash);
     for (const row of released.rows) {
       expect(row.group_size).toBeUndefined();
     }
     expect(store.getReceipt(queryId)?.receiptId).toBe(released.receipt.receiptId);
 
-    const replay = handlers.releaseResult({ queryId, contractHash, outputHash });
+    const replay = handlers.releaseResult(input);
     expect(replay.isError).toBe(true);
     expect(store.getReceipt(queryId)?.receiptId).toBe(released.receipt.receiptId);
     const outcomes = store
@@ -252,9 +271,10 @@ describe("release_result", () => {
   });
 
   it("denies tampered hashes with an audit record and zero release writes", () => {
-    const { queryId, contractHash } = prepareValidated();
+    const input = prepareValidated();
+    const { queryId } = input;
     const wrongOutput = "0".repeat(64);
-    const result = handlers.releaseResult({ queryId, contractHash, outputHash: wrongOutput });
+    const result = handlers.releaseResult({ ...input, outputHash: wrongOutput });
     expect(result.isError).toBe(true);
     const denial = payload(result) as unknown as { findings: Array<{ code: string }> };
     expect(denial.findings.map((finding) => finding.code)).toContain("output_hash_mismatch");
@@ -262,9 +282,28 @@ describe("release_result", () => {
     expect(store.audits().at(-1)?.outcome).toBe("denied");
   });
 
+  it("denies every mismatch in the human-approved release tuple", () => {
+    const input = prepareValidated();
+    const mutations = [
+      { ...input, purpose: "another purpose" },
+      { ...input, audience: "another audience" },
+      { ...input, columns: [...input.columns].reverse() },
+      { ...input, suppressedCells: input.suppressedCells + 1 },
+    ];
+    for (const mutation of mutations) {
+      const result = handlers.releaseResult(mutation);
+      expect(result.isError).toBe(true);
+      expect(payload(result).detail).toBe("approval_tuple_mismatch");
+      expect(store.getReceipt(input.queryId)).toBeUndefined();
+    }
+  });
+
   it("audits unknown query ids without any release write", () => {
     const result = handlers.releaseResult({
       queryId: "q-999999",
+      ...goodMission,
+      columns: ["week", "ticket_count"],
+      suppressedCells: 0,
       contractHash: "0".repeat(64),
       outputHash: "0".repeat(64),
     });
@@ -308,15 +347,55 @@ describe("release_result", () => {
     };
     expect(verdict.status).toBe("approved");
 
-    const result = handlers.releaseResult({
-      queryId: smuggled.queryId,
-      contractHash: verdict.contractHash,
-      outputHash: verdict.outputHash,
-    });
+    const result = handlers.releaseResult(releaseInput(smuggled, verdict));
     expect(result.isError).toBe(true);
     expect(payload(result).detail).toBe("evidence_mismatch");
     expect(store.getReceipt(smuggled.queryId)).toBeUndefined();
     expect(store.audits().at(-1)?.findings).toContainEqual({ code: "evidence_mismatch" });
+  });
+
+  it("denies release when the live suppressed-cell count changed", () => {
+    const driftStore = createVaultStore();
+    let drifted = false;
+    const driftDb: VaultDatabase = {
+      ...db,
+      aggregate: (metric) => {
+        const cells = db.aggregate(metric);
+        if (!drifted) return cells;
+        return [
+          ...cells,
+          {
+            dimensions: {
+              week: "2026-W99",
+              region: "DRIFT",
+              category: "drift",
+            },
+            value: 1,
+            groupSize: 1,
+          },
+        ];
+      },
+    };
+    const driftHandlers = createVaultHandlers(driftDb, driftStore);
+    const prepared = payload(
+      driftHandlers.prepareAnalysis({
+        ...goodMission,
+        dimensions: ["week", "region"],
+        metric: "ticket_count",
+      }),
+    ) as unknown as { queryId: string };
+    const verdict = payload(
+      driftHandlers.validateRelease({ queryId: prepared.queryId }),
+    ) as unknown as { contractHash: string; outputHash: string };
+    const entry = preparedEntry(driftStore, prepared.queryId);
+
+    drifted = true;
+    const result = driftHandlers.releaseResult(releaseInput(entry, verdict));
+
+    expect(result.isError).toBe(true);
+    expect(payload(result).detail).toBe("evidence_mismatch");
+    expect(driftStore.getReceipt(prepared.queryId)).toBeUndefined();
+    expect(driftStore.audits().at(-1)?.findings).toContainEqual({ code: "evidence_mismatch" });
   });
 });
 
@@ -403,6 +482,31 @@ describe("suppression is not reversible by differencing", () => {
 });
 
 describe("fail-closed hardening", () => {
+  it("issues globally unique query and receipt ids across fresh stores", () => {
+    const stores = [createVaultStore(), createVaultStore()];
+    const issued = stores.map((vaultStore) => {
+      const vaultHandlers = createVaultHandlers(db, vaultStore);
+      const prepared = payload(
+        vaultHandlers.prepareAnalysis({
+          ...goodMission,
+          dimensions: ["week"],
+          metric: "ticket_count",
+        }),
+      ) as unknown as { queryId: string };
+      const verdict = payload(
+        vaultHandlers.validateRelease({ queryId: prepared.queryId }),
+      ) as unknown as { contractHash: string; outputHash: string };
+      const released = payload(
+        vaultHandlers.releaseResult(
+          releaseInput(preparedEntry(vaultStore, prepared.queryId), verdict),
+        ),
+      ) as unknown as { receipt: { receiptId: string } };
+      return { queryId: prepared.queryId, receiptId: released.receipt.receiptId };
+    });
+    expect(issued[0]?.queryId).not.toBe(issued[1]?.queryId);
+    expect(issued[0]?.receiptId).not.toBe(issued[1]?.receiptId);
+  });
+
   it("clips oversized query ids at the audit write", () => {
     store.recordAudit(`q-${"x".repeat(500)}`, "unknown_query_id");
     const last = store.audits().at(-1);
@@ -480,7 +584,7 @@ describe("fail-closed hardening", () => {
       contractHash: string;
       outputHash: string;
     };
-    handlers2.releaseResult({ queryId: released.queryId, ...verdict });
+    handlers2.releaseResult(releaseInput(preparedEntry(store2, released.queryId), verdict));
     for (let index = 0; index < 500; index += 1) {
       handlers2.prepareAnalysis({ ...goodMission, dimensions: ["week"], metric: "ticket_count" });
     }
@@ -529,7 +633,9 @@ describe("fail-closed hardening", () => {
       outputHash: string;
     };
     explode = true;
-    const result = handlers2.releaseResult({ queryId: prepared.queryId, ...verdict });
+    const result = handlers2.releaseResult(
+      releaseInput(preparedEntry(store2, prepared.queryId), verdict),
+    );
     expect(result.isError).toBe(true);
     const text = JSON.stringify(result);
     expect(text).not.toContain("INTERNAL_MARKER_xyz");
@@ -596,6 +702,10 @@ describe("fail-closed hardening", () => {
     const smuggled = store.savePrepared({ ...base, extra: "unknown" } as never, 0);
     const result = handlers.releaseResult({
       queryId: smuggled.queryId,
+      purpose: smuggled.candidate.purpose,
+      audience: smuggled.candidate.audience,
+      columns: [...smuggled.candidate.columns],
+      suppressedCells: smuggled.suppressedCells,
       contractHash: "0".repeat(64),
       outputHash: "0".repeat(64),
     });
@@ -621,14 +731,15 @@ describe("render_safe_chart", () => {
   });
 
   it("renders released aggregates without group sizes or sensitive values", () => {
-    const { queryId, contractHash, outputHash } = prepareValidated();
-    handlers.releaseResult({ queryId, contractHash, outputHash });
+    const input = prepareValidated();
+    const { queryId } = input;
+    handlers.releaseResult(input);
     const chart = payload(handlers.renderSafeChart({ queryId })) as unknown as {
       receiptId: string;
       title: string;
       rows: Array<Record<string, unknown>>;
     };
-    expect(chart.receiptId).toMatch(/^r-\d+$/);
+    expect(chart.receiptId).toMatch(/^r-[0-9a-f-]{36}$/);
     expect(chart.title).toBe("ticket_count by week, region");
     for (const row of chart.rows) {
       expect(row.group_size).toBeUndefined();

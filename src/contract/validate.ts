@@ -72,7 +72,7 @@ export function validateRelease(candidate: unknown): ValidationResult {
   // guarded: accessors on hostile objects (getters, proxies) can throw from
   // any property read, and an escaped exception is not a fail-closed verdict.
   try {
-    const parsed = parseCandidate(candidate);
+    const parsed = parseReleaseCandidate(candidate);
     if (parsed === null) {
       // Malformed input is not a policy verdict — it is an unclassifiable
       // request, so it fails closed as needs_review rather than denied.
@@ -163,7 +163,7 @@ function hasExactKeys(record: Record<string, unknown>, keys: readonly string[]):
 // Parsing returns a frozen single-read snapshot, never the caller's object:
 // every later check and hash reads the snapshot, so a stateful getter or proxy
 // cannot show one value to authorization and another to the hash.
-function parseCandidate(value: unknown): ReleaseCandidate | null {
+export function parseReleaseCandidate(value: unknown): ReleaseCandidate | null {
   const record = snapshotRecord(value);
   if (record === null || !hasExactKeys(record, CANDIDATE_KEYS)) return null;
 

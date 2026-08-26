@@ -109,7 +109,18 @@ describe("vault MCP scaffold", () => {
         ["describe_dataset", {}],
         ["prepare_analysis", { purpose: "p", audience: "a", dimensions: [], metric: "m" }],
         ["validate_release", { queryId: "q-1" }],
-        ["release_result", { queryId: "q-1", contractHash: "x", outputHash: "y" }],
+        [
+          "release_result",
+          {
+            queryId: "q-1",
+            purpose: "p",
+            audience: "a",
+            columns: [],
+            suppressedCells: 0,
+            contractHash: "x",
+            outputHash: "y",
+          },
+        ],
         ["render_safe_chart", { queryId: "q-1" }],
       ] as const) {
         const result = await throwingClient.callTool({ name, arguments: args });
@@ -264,9 +275,22 @@ describe("end-to-end release flow over the wire", () => {
         contractHash: verdict.body.contractHash as string,
         outputHash: verdict.body.outputHash as string,
       };
-      const released = await call("release_result", { queryId, ...hashes });
+      const candidate = prepared.body.candidate as {
+        purpose: string;
+        audience: string;
+        columns: string[];
+      };
+      const approvalTuple = {
+        queryId,
+        purpose: candidate.purpose,
+        audience: candidate.audience,
+        columns: candidate.columns,
+        suppressedCells: prepared.body.suppressedCells as number,
+        ...hashes,
+      };
+      const released = await call("release_result", approvalTuple);
       expect(released.isError).toBe(false);
-      const replay = await call("release_result", { queryId, ...hashes });
+      const replay = await call("release_result", approvalTuple);
       expect(replay.isError).toBe(true);
       expect(store.getReceipt(queryId)?.receiptId).toBe(released.body.receipt.receiptId);
 

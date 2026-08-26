@@ -15,6 +15,11 @@ export type FetchEventsResult =
 
 const PAGE_LIMIT = 100;
 const MAX_PAGES = 50;
+const REQUEST_TIMEOUT_MS = 10_000;
+
+export function isSafeTrueForgeId(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value);
+}
 
 function rowsOf(body: unknown): PersistedEvent[] | null {
   const data = (body as { data?: unknown })?.data;
@@ -27,8 +32,21 @@ function rowsOf(body: unknown): PersistedEvent[] | null {
   return rows;
 }
 
+function nextPageToken(body: unknown): string | null | undefined {
+  const pagination = (body as { pagination?: unknown })?.pagination;
+  if (typeof pagination !== "object" || pagination === null || Array.isArray(pagination)) {
+    return undefined;
+  }
+  const token = (pagination as Record<string, unknown>).next_page_token;
+  if (token === undefined || token === null) return null;
+  return typeof token === "string" && token.length > 0 ? token : undefined;
+}
+
 async function getJson(url: string): Promise<unknown> {
-  const response = await fetch(url, { headers: { "content-type": "application/json" } });
+  const response = await fetch(url, {
+    headers: { "content-type": "application/json" },
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
   if (!response.ok) throw new Error(`GET ${url} -> ${response.status}`);
   return response.json();
 }
@@ -38,31 +56,49 @@ export async function fetchTurnEvents(
   sessionId: string,
   turnId: string,
 ): Promise<FetchEventsResult> {
-  const route = `${baseUrl}/api/v1/sessions/${sessionId}/turns/${turnId}/events`;
+  if (!isSafeTrueForgeId(sessionId) || !isSafeTrueForgeId(turnId)) {
+    return { ok: false, reason: "events_unavailable", detail: "session or turn id is malformed" };
+  }
+  const route = `${baseUrl}/api/v1/sessions/${encodeURIComponent(sessionId)}/turns/${encodeURIComponent(turnId)}/events`;
   const events: PersistedEvent[] = [];
+  const seenEventIds = new Set<string>();
+  const seenTokens = new Set<string>();
+  let pageToken: string | undefined;
   try {
     for (let page = 0; page < MAX_PAGES; page++) {
-      const body = await getJson(`${route}?limit=${PAGE_LIMIT}&offset=${page * PAGE_LIMIT}`);
+      const url = new URL(route);
+      url.searchParams.set("limit", String(PAGE_LIMIT));
+      url.searchParams.set("order", "asc");
+      if (pageToken !== undefined) url.searchParams.set("page_token", pageToken);
+      const body = await getJson(url.toString());
       const rows = rowsOf(body);
       if (rows === null) {
         return { ok: false, reason: "events_unavailable", detail: "event list is not an array" };
       }
-      // If offset is silently ignored the server would replay page one; a
-      // repeated leading id means we cannot prove completeness — fail closed.
-      if (
-        page > 0 &&
-        rows.length > 0 &&
-        rows[0]?.id !== undefined &&
-        rows[0]?.id === events[0]?.id
-      ) {
-        return {
-          ok: false,
-          reason: "events_partial",
-          detail: "pagination not honoured; refusing to verify a possibly truncated stream",
-        };
+      for (const row of rows) {
+        if (typeof row.id !== "string") {
+          return { ok: false, reason: "events_unavailable", detail: "event row without an id" };
+        }
+        if (seenEventIds.has(row.id)) {
+          return { ok: false, reason: "events_partial", detail: "event page rows overlap" };
+        }
+        seenEventIds.add(row.id);
       }
       events.push(...rows);
-      if (rows.length < PAGE_LIMIT) return { ok: true, events };
+      const next = nextPageToken(body);
+      if (next === null) return { ok: true, events };
+      if (next === undefined) {
+        return {
+          ok: false,
+          reason: "events_unavailable",
+          detail: "event pagination metadata is malformed",
+        };
+      }
+      if (seenTokens.has(next)) {
+        return { ok: false, reason: "events_partial", detail: "event page token repeated" };
+      }
+      seenTokens.add(next);
+      pageToken = next;
     }
     return { ok: false, reason: "events_partial", detail: `more than ${MAX_PAGES} pages` };
   } catch (error) {
@@ -87,31 +123,58 @@ export async function listSessionTurnIds(
       readonly detail: string;
     }
 > {
-  const route = `${baseUrl}/api/v1/sessions/${sessionId}/turns`;
+  if (!isSafeTrueForgeId(sessionId)) {
+    return { ok: false, reason: "events_unavailable", detail: "session id is malformed" };
+  }
+  const route = `${baseUrl}/api/v1/sessions/${encodeURIComponent(sessionId)}/turns`;
   const turnIds: string[] = [];
+  const seenTurnIds = new Set<string>();
+  const seenTokens = new Set<string>();
+  let pageToken: string | undefined;
   try {
     for (let page = 0; page < MAX_PAGES; page++) {
-      const body = await getJson(
-        `${route}?limit=${TURN_PAGE_LIMIT}&offset=${page * TURN_PAGE_LIMIT}`,
-      );
+      const url = new URL(route);
+      url.searchParams.set("limit", String(TURN_PAGE_LIMIT));
+      if (pageToken !== undefined) url.searchParams.set("page_token", pageToken);
+      const body = await getJson(url.toString());
       const rows = rowsOf(body);
       if (rows === null) {
         return { ok: false, reason: "events_unavailable", detail: "turn list is not an array" };
       }
-      if (page > 0 && rows.length > 0 && rows[0]?.id !== undefined && rows[0]?.id === turnIds[0]) {
-        return {
-          ok: false,
-          reason: "events_partial",
-          detail: "turn pagination not honoured; refusing a possibly truncated list",
-        };
-      }
       for (const row of rows) {
-        if (typeof row.id !== "string") {
-          return { ok: false, reason: "events_unavailable", detail: "turn row without an id" };
+        const state = snapshotTurnState(row.state);
+        const previousTurnId = turnIds.at(-1) ?? null;
+        if (
+          !isSafeTrueForgeId(row.id) ||
+          state !== "done" ||
+          row.previous_turn_id !== previousTurnId
+        ) {
+          return {
+            ok: false,
+            reason: "events_partial",
+            detail: "turn row is malformed, not terminal, or outside the linear session history",
+          };
         }
+        if (seenTurnIds.has(row.id)) {
+          return { ok: false, reason: "events_partial", detail: "turn page rows overlap" };
+        }
+        seenTurnIds.add(row.id);
         turnIds.push(row.id);
       }
-      if (rows.length < TURN_PAGE_LIMIT) return { ok: true, turnIds };
+      const next = nextPageToken(body);
+      if (next === null) return { ok: true, turnIds };
+      if (next === undefined) {
+        return {
+          ok: false,
+          reason: "events_unavailable",
+          detail: "turn pagination metadata is malformed",
+        };
+      }
+      if (seenTokens.has(next)) {
+        return { ok: false, reason: "events_partial", detail: "turn page token repeated" };
+      }
+      seenTokens.add(next);
+      pageToken = next;
     }
     return { ok: false, reason: "events_partial", detail: `more than ${MAX_PAGES} turn pages` };
   } catch (error) {
@@ -126,10 +189,35 @@ export async function fetchSessionEvents(
   turnIds: readonly string[],
 ): Promise<FetchEventsResult> {
   const events: PersistedEvent[] = [];
+  const seenIds = new Set<string>();
   for (const turnId of turnIds) {
     const result = await fetchTurnEvents(baseUrl, sessionId, turnId);
     if (!result.ok) return result;
+    if (
+      !result.events.some((event) => event.type === "turn.created") ||
+      !result.events.some((event) => event.type === "turn.done")
+    ) {
+      return {
+        ok: false,
+        reason: "events_partial",
+        detail: `turn ${turnId.slice(0, 120)} lacks lifecycle boundaries`,
+      };
+    }
+    for (const event of result.events) {
+      const id = event.id as string;
+      if (seenIds.has(id)) {
+        return { ok: false, reason: "events_partial", detail: "event id repeated across turns" };
+      }
+      seenIds.add(id);
+    }
     events.push(...result.events);
   }
   return { ok: true, events };
+}
+
+function snapshotTurnState(value: unknown): string | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  return typeof (value as Record<string, unknown>).status === "string"
+    ? ((value as Record<string, unknown>).status as string)
+    : null;
 }

@@ -1,95 +1,40 @@
-// OpenUI card builders for the three clearance states.
-//
-// TrueForge renders fenced ```openui blocks as registered React components.
-// These helpers produce the canonical text the model should emit so the card
-// content is deterministically testable regardless of LLM temperature. In
-// integration the model is prompted to emit these shapes; in tests we verify
-// the strings directly.
+import { ALLOWED_AUDIENCE, ALLOWED_PURPOSE } from "../contract/policy.js";
 
-export type ClearanceCardInput = {
-  readonly status: "approved" | "denied" | "needs_review";
-  readonly purpose: string;
-  readonly audience: string;
-  readonly queryId: string;
-  readonly contractHash: string;
-  readonly outputHash: string;
-  readonly suppressedCells: number;
-  readonly findings?: ReadonlyArray<{ readonly code: string; readonly detail?: string }>;
-};
+// This exact text is embedded in the production agent prompt. Its components
+// and positional signatures match the OpenUI instructions shipped by the
+// pinned TrueForge 0.1.4 runtime.
+export const OPENUI_CARD_FORMAT = `## OpenUI card format
 
-export type ReceiptCardInput = {
-  readonly receiptId: string;
-  readonly queryId: string;
-  readonly contractHash: string;
-  readonly outputHash: string;
-  readonly datasetVersion: string;
-  readonly policyVersion: string;
-};
+Emit one of these fenced blocks exactly. Replace placeholders only with the
+typed values returned by Vault tools. For denials, render finding.code values only;
+never render finding details or user-supplied text.
 
-// Backslashes first, then quotes: escaping quotes alone lets a value ending
-// in a backslash neutralise its own closing quote and inject OpenUI source.
-// Statements are one line each, so newlines and control characters cannot be
-// represented and are flattened to spaces.
-function escapeValue(value: string | number): string {
-  return (
-    String(value)
-      .replace(/\\/g, "\\\\")
-      .replace(/"/g, '\\"')
-      // biome-ignore lint/suspicious/noControlCharactersInRegex: flattening control chars is the point
-      .replace(/[\u0000-\u001f\u007f]/g, " ")
-  );
-}
+### Clearance card (approved)
 
-// Approved clearance card: purpose/audience tuple and both hashes are in the
-// non-scrolling header region so they cannot be pushed off-screen by row data.
-export function clearanceCard(input: ClearanceCardInput): string {
-  const headerLabel = input.status === "approved" ? "approved" : "denied";
+\`\`\`openui
+root = Stack([card])
+card = Card([header, callout, details], "card", "column", "s")
+header = CardHeader("Release Clearance", "approved")
+callout = Callout("success", "Ready for human approval", "Authorized mission: ${ALLOWED_PURPOSE} → ${ALLOWED_AUDIENCE}")
+details = TextContent("Purpose: ${ALLOWED_PURPOSE}\\nAudience: ${ALLOWED_AUDIENCE}\\nQuery ID: {queryId}\\nContract hash: {contractHash}\\nOutput hash: {outputHash}\\nSuppressed cells: {suppressedCells}", "small")
+\`\`\`
 
-  const lines: string[] = ["```openui", `CardHeader("Release Clearance", "${headerLabel}")`];
+### Denial card
 
-  if (input.status === "approved") {
-    lines.push(
-      `Callout("Authorized mission — no raw rows, emails, phones, or free text released")`,
-      `KeyValue("Purpose", "${escapeValue(input.purpose)}")`,
-      `KeyValue("Audience", "${escapeValue(input.audience)}")`,
-      `KeyValue("Query ID", "${escapeValue(input.queryId)}")`,
-      `KeyValue("Contract hash", "${escapeValue(input.contractHash)}")`,
-      `KeyValue("Output hash", "${escapeValue(input.outputHash)}")`,
-      `KeyValue("Suppressed cells", "${input.suppressedCells}")`,
-    );
-  } else {
-    lines.push(
-      `Callout("Release blocked — review findings before retrying")`,
-      `KeyValue("Status", "${escapeValue(input.status)}")`,
-      `KeyValue("Query ID", "${escapeValue(input.queryId)}")`,
-      `KeyValue("Purpose supplied", "${escapeValue(input.purpose)}")`,
-      `KeyValue("Audience supplied", "${escapeValue(input.audience)}")`,
-    );
-    if (input.findings !== undefined && input.findings.length > 0) {
-      const rows = input.findings
-        .map((f) => `["${escapeValue(f.code)}", "${escapeValue(f.detail ?? "")}"]`)
-        .join(", ");
-      lines.push(`Table(["finding", "detail"], [${rows}])`);
-    }
-  }
+\`\`\`openui
+root = Stack([card])
+card = Card([header, callout, details], "card", "column", "s")
+header = CardHeader("Release Clearance", "denied")
+callout = Callout("error", "Release blocked", "The deterministic contract did not authorize this request")
+details = TextContent("Status: {status}\\nQuery ID: {queryId}\\nFinding codes: {commaSeparatedFindingCodes}", "small")
+\`\`\`
 
-  lines.push("```");
-  return lines.join("\n");
-}
+### Receipt card
 
-// Receipt card: shown after a successful release transition. The receiptId and
-// both hashes confirm that the vault persisted the exact approved payload.
-export function receiptCard(input: ReceiptCardInput): string {
-  return [
-    "```openui",
-    `CardHeader("Release Receipt", "released")`,
-    `Callout("Synthetic release recorded — verify with: verify-receipt <receipt-file>")`,
-    `KeyValue("Receipt ID", "${escapeValue(input.receiptId)}")`,
-    `KeyValue("Query ID", "${escapeValue(input.queryId)}")`,
-    `KeyValue("Contract hash", "${escapeValue(input.contractHash)}")`,
-    `KeyValue("Output hash", "${escapeValue(input.outputHash)}")`,
-    `KeyValue("Dataset version", "${escapeValue(input.datasetVersion)}")`,
-    `KeyValue("Policy version", "${escapeValue(input.policyVersion)}")`,
-    "```",
-  ].join("\n");
-}
+\`\`\`openui
+root = Stack([card])
+card = Card([header, callout, details], "card", "column", "s")
+header = CardHeader("Release Receipt", "released")
+callout = Callout("neutral", "Synthetic release recorded", "No external delivery was performed")
+details = TextContent("Receipt ID: {receiptId}\\nQuery ID: {queryId}\\nContract hash: {contractHash}\\nOutput hash: {outputHash}\\nDataset version: {datasetVersion}\\nPolicy version: {policyVersion}", "small")
+\`\`\``;

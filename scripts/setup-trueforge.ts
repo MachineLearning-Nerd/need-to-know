@@ -5,7 +5,7 @@
 // Usage:  setup-trueforge            (TRUEFORGE_BASE_URL, ZAI_API_KEY in env)
 //
 // Idempotent by construction:
-//   - provider and MCP-server registration tolerate 409 (already registered)
+//   - provider and MCP-server registration validate existing non-secret settings on 409
 //   - the agent is upserted by id: list agents, PUT /agents/{id} {manifest}
 //     when a name match exists, POST /agents when absent. The agents API is
 //     id-routed on trueforge 0.1.4 — name-based routes silently no-op.
@@ -25,6 +25,11 @@ async function api(path: string, options: RequestInit = {}): Promise<unknown> {
     ...options,
     headers: { "content-type": "application/json" },
   });
+  if (!response.ok) {
+    const error = new Error(`${options.method ?? "GET"} ${path} -> ${response.status}`);
+    (error as Error & { status: number }).status = response.status;
+    throw error;
+  }
   const text = await response.text();
   let body: unknown;
   try {
@@ -32,33 +37,42 @@ async function api(path: string, options: RequestInit = {}): Promise<unknown> {
   } catch {
     body = text;
   }
-  if (!response.ok) {
-    const error = new Error(`${options.method ?? "GET"} ${path} -> ${response.status}`);
-    (error as Error & { status: number; body: unknown }).status = response.status;
-    (error as Error & { status: number; body: unknown }).body = body;
-    throw error;
-  }
   return body;
 }
 
-// A 409 means the resource already exists — the state we want.
-async function tolerateConflict(work: Promise<unknown>, label: string): Promise<void> {
+async function registerOrValidate(
+  work: Promise<unknown>,
+  label: string,
+  validateExisting: () => Promise<boolean>,
+): Promise<void> {
   try {
     await work;
     process.stdout.write(`setup-trueforge: registered ${label}\n`);
   } catch (error) {
     if ((error as { status?: number }).status === 409) {
-      // Existing configuration is KEPT, not updated: settings routes on
-      // trueforge 0.1.4 have no validated update path (name-based routes can
-      // silently no-op), so a rotated key or changed URL needs the old entry
-      // deleted in TrueForge settings first.
-      process.stdout.write(
-        `setup-trueforge: ${label} already registered — existing configuration left unchanged\n`,
-      );
+      if (!(await validateExisting())) {
+        throw new Error(
+          `${label} already exists with different settings; delete it in TrueForge and rerun setup`,
+        );
+      }
+      process.stdout.write(`setup-trueforge: ${label} existing configuration verified\n`);
       return;
     }
     throw error;
   }
+}
+
+function manifestsNamed(body: unknown, name: string): Record<string, unknown>[] {
+  const data = (body as { data?: unknown })?.data;
+  if (!Array.isArray(data)) return [];
+  return data.flatMap((item) => {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) return [];
+    const manifest = (item as Record<string, unknown>).manifest;
+    if (typeof manifest !== "object" || manifest === null || Array.isArray(manifest)) return [];
+    return (manifest as Record<string, unknown>).name === name
+      ? [manifest as Record<string, unknown>]
+      : [];
+  });
 }
 
 function listedAgents(body: unknown): Array<{ id: string; name: string }> {
@@ -75,23 +89,42 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  await tolerateConflict(
+  const providerBaseUrl = process.env.ZAI_OPENAI_BASE_URL ?? "https://api.z.ai/api/coding/paas/v4";
+  await registerOrValidate(
     api("/settings/model-providers", {
       method: "POST",
       body: JSON.stringify({
         manifest: {
           type: "custom",
           name: providerName,
-          base_url: process.env.ZAI_OPENAI_BASE_URL ?? "https://api.z.ai/api/coding/paas/v4",
+          base_url: providerBaseUrl,
           auth: { api_key: apiKey },
           models: [{ model_id: modelId, name: modelId, properties: { context_length: 32768 } }],
         },
       }),
     }),
     `model provider ${providerName}`,
+    async () => {
+      const matches = manifestsNamed(await api("/settings/model-providers"), providerName);
+      if (matches.length !== 1) return false;
+      const existing = matches[0];
+      const models = existing === undefined ? null : existing.models;
+      return (
+        existing?.type === "custom" &&
+        existing.base_url === providerBaseUrl &&
+        Array.isArray(models) &&
+        models.some(
+          (model) =>
+            typeof model === "object" &&
+            model !== null &&
+            !Array.isArray(model) &&
+            (model as Record<string, unknown>).model_id === modelId,
+        )
+      );
+    },
   );
 
-  await tolerateConflict(
+  await registerOrValidate(
     api("/settings/mcp-servers", {
       method: "POST",
       body: JSON.stringify({
@@ -104,6 +137,10 @@ async function main(): Promise<void> {
       }),
     }),
     `MCP server ${VAULT_MCP_SERVER_NAME} -> ${vaultUrl}`,
+    async () => {
+      const matches = manifestsNamed(await api("/settings/mcp-servers"), VAULT_MCP_SERVER_NAME);
+      return matches.length === 1 && matches[0]?.type === "remote" && matches[0]?.url === vaultUrl;
+    },
   );
 
   const manifest = buildAgentManifest(providerName, modelId);
@@ -125,7 +162,5 @@ async function main(): Promise<void> {
 
 main().catch((error) => {
   process.stderr.write(`setup-trueforge: ${(error as Error).message}\n`);
-  const body = (error as { body?: unknown }).body;
-  if (body !== undefined) process.stderr.write(`${JSON.stringify(body)}\n`);
   process.exit(1);
 });
