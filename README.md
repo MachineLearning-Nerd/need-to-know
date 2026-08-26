@@ -74,6 +74,11 @@ TRUEFORGE_BASE_URL=http://localhost:8891 npm run verify-receipt -- gate-a-bundle
 npm run verify-receipt -- gate-a-bundle.json
 ```
 
+## Known limitations
+
+What the evidence chain does and does not prove is recorded honestly in
+[docs/LIMITATIONS.md](docs/LIMITATIONS.md).
+
 ## AI-assisted development disclosure
 
 This project is built with AI coding assistants (Claude Code and Codex as pair programmers, Qodo for pull-request review). Every change is human-reviewed before merge, and the team owns and can explain the architecture and all technical decisions. All data in this repository is synthetic; no real personal data is used anywhere.
