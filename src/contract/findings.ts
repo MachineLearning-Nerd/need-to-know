@@ -43,4 +43,7 @@ export type FindingCode =
   | "value_out_of_domain"
   | "candidate_malformed"
   | "contract_hash_mismatch"
-  | "output_hash_mismatch";
+  | "output_hash_mismatch"
+  // vault execution-time revalidation: the stored candidate no longer matches
+  // what the vault can reproduce from its own data
+  | "evidence_mismatch";
