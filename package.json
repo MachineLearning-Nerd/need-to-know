@@ -22,7 +22,8 @@
     "start-vault": "node --import ./scripts/register-ts-loader.mjs scripts/start-vault.ts",
     "setup-trueforge": "node --import ./scripts/register-ts-loader.mjs scripts/setup-trueforge.ts",
     "gate-a": "node --import ./scripts/register-ts-loader.mjs scripts/gate-a.ts",
-    "gate-b": "node --import ./scripts/register-ts-loader.mjs scripts/gate-b.ts"
+    "gate-b": "node --import ./scripts/register-ts-loader.mjs scripts/gate-b.ts",
+    "gate-c": "node --import ./scripts/register-ts-loader.mjs scripts/gate-c.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",

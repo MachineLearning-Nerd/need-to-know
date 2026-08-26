@@ -57,7 +57,7 @@ The manifest comes from `buildAgentManifest(provider, modelId)` in `src/agent/ma
 
 **Step 3 — open the TrueForge UI** at `http://localhost:8891` and start a session with the `need-to-know` agent.
 
-**Optional — live gates:** `npm run gate-a` proves the deny/allow approval flow against the running server and writes a verifiable bundle; `npm run gate-b` re-checks the persisted events for canary and raw-PII absence.
+**Optional — live gates:** `npm run gate-a` proves the deny/allow approval flow against the running server and writes a verifiable bundle; `npm run gate-b` re-checks the persisted events for canary and raw-PII absence; `npm run gate-c` runs bypass attempts (raw export, exact small-cell count) and proves zero releases and no leaked values in the persisted streams.
 
 ### Verifying a release receipt
 
@@ -85,12 +85,13 @@ This project is built with AI coding assistants (Claude Code and Codex as pair p
 
 ## Status
 
-Phase 5 of the build window complete. All five components are wired:
+Phase 6 of the build window complete. All components are wired:
 
 - **Phase 1** - Vault SQLite database: synthetic support-ticket data with canary row and small-cell case.
 - **Phase 2** - Deterministic ReleaseContract library: allowlists, group-size enforcement, canonical hashing.
 - **Phase 3** - Vault MCP server: five-tool boundary (describe, prepare, chart, validate, release). No raw-row tool.
 - **Phase 4** - TrueForge agent wiring: root prompt, Ask User Questions, pinned-valid OpenUI clearance/denial/receipt cards, and `require_approval_for_tools: ["release_result"]`.
 - **Phase 5** - Session-bound `verify-receipt` evidence: live token-paginated event fetch, exact approval/release witness checks, and canary/raw-boundary gates. The verifier ships 89 dedicated tests (53 verify, 16 event-fetch, 10 live-session, 10 boundary) covering the full fail-closed enumeration: malformed receipts, missing/unavailable/partial events, unknown event types, mismatched session/turn IDs, hash mismatches, approval-ordering violations, duplicate approval and decision events, and canary presence.
+- **Phase 6** - Agent UX evidence: the vault renders the released chart's OpenUI block itself (the model pastes it verbatim — chart values never pass through the model), every prompt-card placeholder is origin-tested against typed vault response fields, Gate A asserts the Ask User Questions pause precedes the approval gate, and Gate C proves bypass attempts (raw export, exact small-cell count) produce zero releases and no leaked values.
 
 Dynamic subagents are deliberately disabled in this pinned build: TrueForge 0.1.4 children inherit the root's Vault tools, so enabling them would violate the root-only `release_result` invariant.
