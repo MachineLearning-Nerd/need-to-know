@@ -1,19 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { CHART_ROW_CAP, type ChartInput, renderChartBlock } from "./chart.js";
-
-// The pinned TrueForge 0.1.4 OpenUI instructions define these components.
-// The renderer must never emit a call outside this set.
-const PINNED_COMPONENTS = new Set([
-  "Stack",
-  "Card",
-  "CardHeader",
-  "Callout",
-  "TextContent",
-  "BarChart",
-  "Series",
-  "Table",
-  "Col",
-]);
+import { lintOpenUiBlock } from "./lint.js";
 
 function baseInput(rowCount: number, suppressedCells = 0): ChartInput {
   const rows = Array.from({ length: rowCount }, (_, index) => ({
@@ -32,31 +19,8 @@ function baseInput(rowCount: number, suppressedCells = 0): ChartInput {
   };
 }
 
-// Minimal grammar check against the pinned OpenUI rules: fenced block, one
-// `identifier = Component(...)` statement per line, a Stack root, every
-// defined variable referenced, only pinned components called.
 function lintBlock(block: string): void {
-  const lines = block.split("\n");
-  expect(lines[0]).toBe("```openui");
-  expect(lines.at(-1)).toBe("```");
-  const statements = lines.slice(1, -1);
-  const defined = new Map<string, string>();
-  for (const line of statements) {
-    const match = /^([a-z][A-Za-z0-9]*) = ([A-Z][A-Za-z]*)\((.*)\)$/.exec(line);
-    expect(match, `statement is not a single-line assignment: ${line}`).not.toBeNull();
-    if (match === null) continue;
-    const [, name, component] = match;
-    expect(PINNED_COMPONENTS.has(component ?? ""), `unpinned component: ${component}`).toBe(true);
-    defined.set(name ?? "", line);
-  }
-  expect(statements[0]).toBe("root = Stack([card])");
-  for (const name of defined.keys()) {
-    if (name === "root") continue;
-    const referenced = statements.some(
-      (line) => !line.startsWith(`${name} =`) && new RegExp(`[[ ,]${name}[\\],]`).test(line),
-    );
-    expect(referenced, `unreferenced variable would be silently dropped: ${name}`).toBe(true);
-  }
+  expect(lintOpenUiBlock(block)).toEqual([]);
 }
 
 describe("renderChartBlock: bounded-card battery", () => {
