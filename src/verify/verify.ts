@@ -64,9 +64,17 @@ function parseEvents(value: unknown): Array<Record<string, unknown>> | null | un
 }
 
 // Check the TrueForge event array for:
-// 1. At least one tool.approval_required event before any tool.response for release_result
+// 1. Canary absence in the serialized event stream
 // 2. No duplicate tool.approval_required events for the same tool call
-// 3. Canary absence in the serialized event stream
+// 3. At least one tool.approval_required event in the stream
+// 4. For every GATED tool.response — one whose tool_call_id was named in a
+//    tool.approval_required — the request precedes the response AND the user
+//    granted it in between (user.tool_approval with status "allow").
+// Ungated responses (describe_dataset, prepare_analysis) pass through: a real
+// session runs and answers those long before release_result asks for
+// approval, so demanding approval before every response would reject every
+// legitimate full-session transcript. All positions are real indices into
+// events — a filtered view would shift them and misjudge ordering.
 function checkEvents(events: Array<Record<string, unknown>>): VerifyResult | null {
   // Canary check over the full serialized event stream.
   const eventsText = JSON.stringify(events);
@@ -74,66 +82,66 @@ function checkEvents(events: Array<Record<string, unknown>>): VerifyResult | nul
     return { outcome: "canary_in_events", detail: "canary value found in event stream" };
   }
 
-  // Extract event types in sequence order.
-  const sequence: string[] = events
-    .map((event) => (typeof event.type === "string" ? event.type : ""))
-    .filter((type) => type.length > 0);
-
-  // Find all approval events and their positions.
-  const approvalPositions: number[] = [];
-  const approvalToolCallIds = new Set<string>();
+  // Gated tool calls: id -> position of the tool.approval_required naming it.
+  const approvalPositionById = new Map<string, number>();
+  let approvalCount = 0;
   for (let index = 0; index < events.length; index++) {
     const event = events[index];
-    if (event === undefined) continue;
-    if (event.type === TF_EVENT_TOOL_APPROVAL_REQUIRED) {
-      approvalPositions.push(index);
-      // Extract tool call IDs from the approval event's tool_calls array.
-      const toolCalls = snapshotArray(event.tool_calls);
-      if (toolCalls !== null) {
-        for (const tc of toolCalls) {
-          const tcRecord = snapshotRecord(tc);
-          if (tcRecord !== null && typeof tcRecord.id === "string") {
-            if (approvalToolCallIds.has(tcRecord.id)) {
-              return {
-                outcome: "duplicate_approval_event",
-                detail: `duplicate approval for tool call ${tcRecord.id}`,
-              };
-            }
-            approvalToolCallIds.add(tcRecord.id);
-          }
-        }
+    if (event === undefined || event.type !== TF_EVENT_TOOL_APPROVAL_REQUIRED) continue;
+    approvalCount += 1;
+    const toolCalls = snapshotArray(event.tool_calls);
+    if (toolCalls === null) continue;
+    for (const tc of toolCalls) {
+      const tcRecord = snapshotRecord(tc);
+      if (tcRecord === null || typeof tcRecord.id !== "string") continue;
+      if (approvalPositionById.has(tcRecord.id)) {
+        return {
+          outcome: "duplicate_approval_event",
+          detail: `duplicate approval for tool call ${tcRecord.id.slice(0, 120)}`,
+        };
       }
+      approvalPositionById.set(tcRecord.id, index);
     }
   }
 
   // There must be at least one approval event.
-  if (approvalPositions.length === 0) {
+  if (approvalCount === 0) {
     return { outcome: "approval_missing", detail: "no tool.approval_required event found" };
   }
 
-  // Find the position of any user.tool_approval (resume) event.
-  const resumePositions: number[] = [];
-  for (let index = 0; index < events.length; index++) {
-    if (sequence[index] === TF_EVENT_USER_TOOL_APPROVAL) {
-      resumePositions.push(index);
-    }
-  }
+  const isUserAllow = (event: Record<string, unknown>, id: string): boolean => {
+    if (event.type !== TF_EVENT_USER_TOOL_APPROVAL || event.tool_call_id !== id) return false;
+    const approval = snapshotRecord(event.approval);
+    return approval !== null && approval.status === "allow";
+  };
 
-  // Find the position of tool.response events (tool execution evidence).
-  const responsePositions: number[] = [];
   for (let index = 0; index < events.length; index++) {
-    if (sequence[index] === TF_EVENT_TOOL_RESPONSE) {
-      responsePositions.push(index);
-    }
-  }
-
-  // Every tool.response must be preceded by at least one approval event.
-  for (const responsePos of responsePositions) {
-    const priorApproval = approvalPositions.some((approvalPos) => approvalPos < responsePos);
-    if (!priorApproval) {
+    const event = events[index];
+    if (event === undefined || event.type !== TF_EVENT_TOOL_RESPONSE) continue;
+    const id = typeof event.tool_call_id === "string" ? event.tool_call_id : null;
+    if (id === null) continue;
+    const requested = approvalPositionById.get(id);
+    if (requested === undefined) continue;
+    if (requested >= index) {
       return {
         outcome: "release_before_approval",
-        detail: `tool.response at index ${responsePos} has no prior tool.approval_required`,
+        detail: `tool.response at index ${index} precedes its tool.approval_required`,
+      };
+    }
+    // The agent asking is not the user allowing: the grant must sit between
+    // the request and the execution, or the response ran unapproved.
+    let granted = false;
+    for (let position = requested + 1; position < index; position++) {
+      const candidate = events[position];
+      if (candidate !== undefined && isUserAllow(candidate, id)) {
+        granted = true;
+        break;
+      }
+    }
+    if (!granted) {
+      return {
+        outcome: "user_approval_missing",
+        detail: `tool.response at index ${index} for ${id.slice(0, 120)} has no user grant`,
       };
     }
   }
@@ -207,7 +215,4 @@ export function verifyReceipt(value: unknown): VerifyResult {
   }
 }
 
-// Build a VerifiableReceipt from the store's PreparedAnalysis + ReleaseReceipt.
-// This is the companion to the CLI: given what the vault stored, produce
-// a JSON-serializable bundle that verify-receipt can consume.
 export type { VerifiableReceipt, VerifyOutcome, VerifyResult } from "./receipt.js";

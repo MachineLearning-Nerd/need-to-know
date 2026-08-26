@@ -334,6 +334,72 @@ describe("verify-receipt: event ordering failures", () => {
     const result = verifyReceipt({ ...verifiable, events: ["string-element"] });
     expect(result.outcome).toBe("events_malformed");
   });
+
+  // The agent asking is not the user allowing: a transcript where the user
+  // explicitly denied — or never answered — and the tool ran anyway is the
+  // exact evidence this verifier exists to reject.
+  it("returns user_approval_missing when the user denied and the tool ran anyway", () => {
+    const { verifiable } = buildValidReceipt();
+    const result = verifyReceipt({
+      ...verifiable,
+      events: [
+        { type: TF_EVENT_TOOL_APPROVAL_REQUIRED, tool_calls: [{ id: "tc-1" }] },
+        { type: TF_EVENT_USER_TOOL_APPROVAL, tool_call_id: "tc-1", approval: { status: "deny" } },
+        { type: TF_EVENT_TOOL_RESPONSE, tool_call_id: "tc-1" },
+      ],
+    });
+    expect(result.outcome).toBe("user_approval_missing");
+  });
+
+  it("returns user_approval_missing when no user.tool_approval event exists", () => {
+    const { verifiable } = buildValidReceipt();
+    const result = verifyReceipt({
+      ...verifiable,
+      events: [
+        { type: TF_EVENT_TOOL_APPROVAL_REQUIRED, tool_calls: [{ id: "tc-1" }] },
+        { type: TF_EVENT_TOOL_RESPONSE, tool_call_id: "tc-1" },
+      ],
+    });
+    expect(result.outcome).toBe("user_approval_missing");
+  });
+
+  // Only gated calls need approval-before-response: a real session answers
+  // describe_dataset and prepare_analysis long before release_result asks.
+  it("passes a full-session transcript with ungated responses before the approval", () => {
+    const { verifiable } = buildValidReceipt();
+    const result = verifyReceipt({
+      ...verifiable,
+      events: [
+        { type: TF_EVENT_TOOL_RESPONSE, tool_call_id: "tc-describe" },
+        { type: TF_EVENT_TOOL_RESPONSE, tool_call_id: "tc-prepare" },
+        { type: TF_EVENT_TOOL_APPROVAL_REQUIRED, tool_calls: [{ id: "tc-release" }] },
+        {
+          type: TF_EVENT_USER_TOOL_APPROVAL,
+          tool_call_id: "tc-release",
+          approval: { status: "allow" },
+        },
+        { type: TF_EVENT_TOOL_RESPONSE, tool_call_id: "tc-release" },
+      ],
+    });
+    expect(result.outcome).toBe("pass");
+  });
+
+  // Ordering must be judged on real indices into events: a filtered view
+  // shifted positions leftward, so one type-less event false-failed a
+  // correctly ordered stream.
+  it("passes a correctly ordered stream that contains a type-less event", () => {
+    const { verifiable } = buildValidReceipt();
+    const result = verifyReceipt({
+      ...verifiable,
+      events: [
+        { note: "heartbeat without a type field" },
+        { type: TF_EVENT_TOOL_APPROVAL_REQUIRED, tool_calls: [{ id: "tc-1" }] },
+        { type: TF_EVENT_USER_TOOL_APPROVAL, tool_call_id: "tc-1", approval: { status: "allow" } },
+        { type: TF_EVENT_TOOL_RESPONSE, tool_call_id: "tc-1" },
+      ],
+    });
+    expect(result.outcome).toBe("pass");
+  });
 });
 
 // ---- Fail-closed: unexpected input shapes ----------------------------------

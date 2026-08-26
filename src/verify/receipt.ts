@@ -31,6 +31,7 @@ export type VerifyOutcome =
   | "canary_in_rows"
   | "events_malformed"
   | "approval_missing"
+  | "user_approval_missing"
   | "release_before_approval"
   | "canary_in_events"
   | "duplicate_approval_event";
