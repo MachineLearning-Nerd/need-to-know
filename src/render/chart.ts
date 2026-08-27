@@ -1,76 +1,59 @@
-import { GROUP_SIZE_FIELD, MAX_RELEASE_ROWS } from "../contract/rows.js";
+import { MAX_RELEASE_ROWS } from "../contract/rows.js";
+import { quoteOpenUiValue as quoted } from "./value.js";
 
 // Deterministic vault-side chart renderer. The vault composes the complete
 // OpenUI block from the released aggregate and returns it in the
-// render_safe_chart response; the model pastes it verbatim. Card content is
-// therefore vault-authored — the model never assembles chart values.
+// render_safe_chart response. The vault-authored block is the source of the
+// chart values; Gate A fails the run if the model does not relay it exactly.
 //
 // Component calls and positional signatures match the OpenUI instructions
 // shipped by the pinned TrueForge 0.1.4 runtime: Stack, Card, CardHeader,
-// Callout, TextContent, BarChart, Series, Table, Col.
+// Callout, TextContent, BarChart, Series.
 
 export type ChartInput = {
   readonly receiptId: string;
   readonly dimensions: readonly string[];
   readonly metric: string;
-  readonly columns: readonly string[];
   readonly rows: ReadonlyArray<Record<string, string | number>>;
   readonly suppressedCells: number;
 };
 
-// One bar per released row, capped. The cap matches the contract's release
-// row cap, so a compliant release never trips it — it exists so a defect
-// upstream degrades to an explicit omission marker, never a silent cut.
+// The cap matches the contract's release row cap. Crossing it means an
+// upstream invariant failed, so rendering stops instead of silently showing
+// a partial payload under the receipt's hash.
 export const CHART_ROW_CAP = MAX_RELEASE_ROWS;
 
-// Backslashes first, then quotes: escaping quotes alone lets a value ending
-// in a backslash neutralise its own closing quote and inject OpenUI source.
-// Statements are one line each, so control characters flatten to spaces.
-function escapeValue(value: string | number): string {
-  return (
-    String(value)
-      .replace(/\\/g, "\\\\")
-      .replace(/"/g, '\\"')
-      // biome-ignore lint/suspicious/noControlCharactersInRegex: flattening control chars is the point
-      .replace(/[\u0000-\u001f\u007f]/g, " ")
-  );
-}
-
-function quoted(value: string | number): string {
-  return `"${escapeValue(value)}"`;
-}
-
 function chartNumber(value: unknown): number {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new Error("chart metric is not a finite number");
+  }
+  return value;
 }
 
 // Renders the released aggregate as a fenced OpenUI block: header with the
 // receipt id, one bar per released row (suppressed cells are never drawn as
-// zeros — they are simply not bars), the exact released table, and a
-// deterministic marker stating what was suppressed or omitted. The marker is
-// absent when nothing was.
+// zeros — they are simply not bars), and a deterministic suppression marker.
+// The marker is absent when nothing was suppressed.
 export function renderChartBlock(input: ChartInput): string {
+  if (input.rows.length > CHART_ROW_CAP) {
+    throw new Error(`chart row count exceeds release cap ${CHART_ROW_CAP}`);
+  }
   const title = `${input.metric} by ${input.dimensions.join(", ")}`;
-  const rendered = input.rows.slice(0, CHART_ROW_CAP);
+  const rendered = input.rows;
   const lines: string[] = ["```openui", "root = Stack([card])"];
 
   const children: string[] = ["header"];
   if (rendered.length === 0) {
     children.push("empty");
   } else {
-    children.push("chart", "table");
+    children.push("chart");
   }
 
   const notes: string[] = [];
   if (input.suppressedCells > 0) {
-    const total = input.suppressedCells + input.rows.length;
     notes.push(
-      `${input.suppressedCells} of ${total} aggregate cells suppressed inside the vault (k >= 3)`,
+      `${input.suppressedCells} finest-granularity aggregate cells suppressed inside the vault (k >= 3)`,
     );
-  }
-  const omitted = input.rows.length - rendered.length;
-  if (omitted > 0) {
-    notes.push(`${omitted} rows omitted from this chart (row cap ${CHART_ROW_CAP})`);
   }
   if (notes.length > 0) children.push("note");
 
@@ -94,17 +77,6 @@ export function renderChartBlock(input: ChartInput): string {
       )}, ${quoted(input.metric)})`,
       `series = Series(${quoted(input.metric)}, [${values.join(", ")}])`,
     );
-    const colNames = input.columns.map((_, index) => `col${index}`);
-    lines.push(`table = Table([${colNames.join(", ")}])`);
-    input.columns.forEach((column, index) => {
-      const numeric = column === input.metric || column === GROUP_SIZE_FIELD;
-      const cells = rendered.map((row) =>
-        numeric ? String(chartNumber(row[column])) : quoted(String(row[column] ?? "")),
-      );
-      lines.push(
-        `col${index} = Col(${quoted(column)}, [${cells.join(", ")}], ${numeric ? '"number"' : '"string"'})`,
-      );
-    });
   }
 
   if (notes.length > 0) {

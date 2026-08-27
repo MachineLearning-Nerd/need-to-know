@@ -13,7 +13,6 @@ function baseInput(rowCount: number, suppressedCells = 0): ChartInput {
     receiptId: "r-test",
     dimensions: ["week", "region"],
     metric: "ticket_count",
-    columns: ["week", "region", "ticket_count", "group_size"],
     rows,
     suppressedCells,
   };
@@ -40,29 +39,21 @@ describe("renderChartBlock: bounded-card battery", () => {
     expect(series?.[1]?.split(", ")).toHaveLength(CHART_ROW_CAP);
   });
 
-  it("caps at cap+1 with exact omission arithmetic", () => {
-    const block = renderChartBlock(baseInput(CHART_ROW_CAP + 1));
-    lintBlock(block);
-    expect(block).toContain(`1 rows omitted from this chart (row cap ${CHART_ROW_CAP})`);
+  it("fails closed if an upstream defect exceeds the release cap", () => {
+    expect(() => renderChartBlock(baseInput(CHART_ROW_CAP + 1))).toThrow(
+      `chart row count exceeds release cap ${CHART_ROW_CAP}`,
+    );
+    expect(() => renderChartBlock(baseInput(500))).toThrow(
+      `chart row count exceeds release cap ${CHART_ROW_CAP}`,
+    );
   });
 
-  it("caps a large input and reports the exact omitted count", () => {
-    const block = renderChartBlock(baseInput(500));
-    lintBlock(block);
-    expect(block).toContain(`${500 - CHART_ROW_CAP} rows omitted`);
-    const series = /series = Series\("ticket_count", \[([^\]]*)\]\)/.exec(block);
-    expect(series?.[1]?.split(", ")).toHaveLength(CHART_ROW_CAP);
-  });
-
-  it("selects rows deterministically: the first N in vault order", () => {
-    const block = renderChartBlock(baseInput(CHART_ROW_CAP + 5));
-    expect(block).toContain('"2026-W10 · EU"');
-    expect(block).not.toContain(`2026-W${10 + CHART_ROW_CAP}`);
-  });
-
-  it("states exact suppression arithmetic and omits the marker at zero", () => {
+  it("states the exact finest-granularity suppression count and omits it at zero", () => {
     const suppressed = renderChartBlock(baseInput(8, 14));
-    expect(suppressed).toContain("14 of 22 aggregate cells suppressed inside the vault (k >= 3)");
+    expect(suppressed).toContain(
+      "14 finest-granularity aggregate cells suppressed inside the vault (k >= 3)",
+    );
+    expect(suppressed).not.toContain("14 of 22");
     const clean = renderChartBlock(baseInput(8, 0));
     expect(clean).not.toContain("suppressed");
   });
@@ -82,6 +73,8 @@ describe("renderChartBlock: origin and injection safety", () => {
     const block = renderChartBlock({ ...input, rows });
     expect(block).not.toContain("leak@example.com");
     expect(block).not.toContain("email");
+    expect(block).not.toContain("Table(");
+    expect(block).not.toContain("Col(");
   });
 
   it("neutralises quote, backslash, and newline injection in values", () => {
@@ -94,10 +87,10 @@ describe("renderChartBlock: origin and injection safety", () => {
     // hostile value (newline flattened to a space) — a broken escape truncates
     // it at the breakout point, which is exactly the injection.
     expect(block.split("\n").some((line) => line.startsWith("rogue"))).toBe(false);
-    const colLine = block.split("\n").find((line) => line.startsWith("col1 ="));
-    const match = /Col\("region", \["((?:[^"\\]|\\.)*)"\]/.exec(colLine ?? "");
+    const chartLine = block.split("\n").find((line) => line.startsWith("chart ="));
+    const match = /BarChart\(\["((?:[^"\\]|\\.)*)"\]/.exec(chartLine ?? "");
     const roundTripped = match?.[1]?.replace(/\\(.)/g, "$1");
-    expect(roundTripped).toBe(hostile.replace(/\n/g, " "));
+    expect(roundTripped).toBe(`2026-W10 · ${hostile.replace(/\n/g, " ")}`);
   });
 
   it("keeps long unbroken values on a single statement line", () => {
@@ -108,6 +101,20 @@ describe("renderChartBlock: origin and injection safety", () => {
   });
 
   it("emits only components from the pinned OpenUI instruction set", () => {
-    lintBlock(renderChartBlock(baseInput(3, 2)));
+    const block = renderChartBlock(baseInput(3, 2));
+    lintBlock(block);
+    expect(block).toMatch(/^card = Card\(\[.*\], "card", "column", "s"\)$/m);
+    expect(block).toMatch(/^chart = BarChart\(.*\[series\], "grouped",/m);
+    expect(block).toMatch(/^series = Series\("ticket_count", \[[\d, ]+\]\)$/m);
+    expect(block).toMatch(/^note = TextContent\(.*?, "small"\)$/m);
+    expect(renderChartBlock(baseInput(0))).toContain('empty = Callout("neutral",');
+  });
+
+  it("rejects invalid metric values instead of drawing them as zero", () => {
+    const input = baseInput(1);
+    const rows = [{ ...input.rows[0], ticket_count: "not-a-number" }];
+    expect(() => renderChartBlock({ ...input, rows })).toThrow(
+      "chart metric is not a finite number",
+    );
   });
 });

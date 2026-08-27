@@ -20,6 +20,7 @@ import { writeFileSync } from "node:fs";
 import { TrueForge } from "@truefoundry/trueforge-sdk";
 
 import { buildAgentManifest } from "../src/agent/manifest.js";
+import { ALLOWED_PURPOSE } from "../src/contract/policy.js";
 import { createVaultHandlers } from "../src/server/handlers.js";
 import { startVaultMcpServer } from "../src/server/mcp.js";
 import { createVaultStore } from "../src/server/store.js";
@@ -29,11 +30,15 @@ import { loadLiveSessionEvidence } from "../src/verify/live.js";
 import { verifyReceipt } from "../src/verify/verify.js";
 import {
   askUqPrecedesApproval,
+  exceptionQuestionPrecedesVaultTools,
   exercisedQuestionAndApproval,
+  GATE_A_EXCEPTION_MESSAGE,
+  GATE_A_MISSING_PURPOSE_MESSAGE,
   GATE_A_USER_MESSAGE,
   type GateActionInput,
   type GateStreamEvent,
   gateABoundaryFailures,
+  openUiBlocksRelayedVerbatim,
   pendingSessionInput,
 } from "./gate-a-actions.js";
 
@@ -72,6 +77,8 @@ async function runTurn(
 async function runSession(
   client: TrueForge,
   status: "allow" | "deny",
+  message = GATE_A_USER_MESSAGE,
+  questionAnswer?: string,
 ): Promise<{
   sessionId: string;
   events: GateStreamEvent[];
@@ -84,14 +91,12 @@ async function runSession(
   if (session.agent.type !== "inline") {
     throw new Error("created session did not snapshot its agent");
   }
-  const events = await runTurn(client, session.id, [
-    { type: "user.message", content: GATE_A_USER_MESSAGE },
-  ]);
+  const events = await runTurn(client, session.id, [{ type: "user.message", content: message }]);
   let approvalPauses = 0;
   let questionPauses = 0;
   const answeredCallIds = new Set<string>();
   for (let round = 0; round < 4; round++) {
-    const pending = pendingSessionInput(events, answeredCallIds, status);
+    const pending = pendingSessionInput(events, answeredCallIds, status, questionAnswer);
     if (pending.input.length === 0) {
       if (approvalPauses > 0) break;
       events.push(
@@ -112,6 +117,33 @@ async function runSession(
   return { sessionId: session.id, events, approvalPauses, questionPauses };
 }
 
+async function runExceptionSession(client: TrueForge): Promise<{
+  sessionId: string;
+  events: GateStreamEvent[];
+  approvalPauses: number;
+  questionPauses: number;
+}> {
+  const { data: session } = await client.sessions.create({
+    agent: { spec: buildAgentManifest(providerName, modelId) },
+  });
+  const events = await runTurn(client, session.id, [
+    { type: "user.message", content: GATE_A_EXCEPTION_MESSAGE },
+  ]);
+  const answeredCallIds = new Set<string>();
+  let approvalPauses = 0;
+  let questionPauses = 0;
+  for (let round = 0; round < 3; round++) {
+    const pending = pendingSessionInput(events, answeredCallIds, "deny", "Stop (Recommended)");
+    approvalPauses += pending.approvalCount;
+    const questions = pending.input.filter((item) => item.type === "user.tool_response");
+    if (questions.length === 0) break;
+    for (const question of questions) answeredCallIds.add(question.toolCallId);
+    questionPauses += questions.length;
+    events.push(...(await runTurn(client, session.id, questions)));
+  }
+  return { sessionId: session.id, events, approvalPauses, questionPauses };
+}
+
 // Persisted approval events carry tool_calls[].id only — no tool names — so
 // gated calls are identified by id and their responses matched by
 // tool_call_id.
@@ -127,45 +159,48 @@ function gatedCallPositions(events: PersistedEvent[]): Map<string, number> {
   return positions;
 }
 
-function hasAskUserQuestion(events: PersistedEvent[]): boolean {
-  return events.some((event) => {
-    if (event.type !== "model.message" || !Array.isArray(event.tool_calls)) return false;
-    return event.tool_calls.some((value) => {
-      if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
-      const fn = (value as { function?: unknown }).function;
-      return (
-        typeof fn === "object" &&
-        fn !== null &&
-        !Array.isArray(fn) &&
-        (fn as { name?: unknown }).name === "ask_user_question"
-      );
-    });
-  });
-}
-
 async function main(): Promise<void> {
   const db = openVaultDatabase();
   const store = createVaultStore();
-  const vault = await startVaultMcpServer(vaultPort, createVaultHandlers(db, store));
-  process.stdout.write(`gate-a: vault on ${vault.port}, trueforge at ${baseUrl}\n`);
-  const client = new TrueForge({ baseUrl, timeoutInSeconds: 300 });
+  let vault: Awaited<ReturnType<typeof startVaultMcpServer>> | undefined;
 
   try {
+    vault = await startVaultMcpServer(vaultPort, createVaultHandlers(db, store));
+    process.stdout.write(`gate-a: vault on ${vault.port}, trueforge at ${baseUrl}\n`);
+    const client = new TrueForge({ baseUrl, timeoutInSeconds: 300 });
     // ---- DENY path -------------------------------------------------------
     const denied = await runSession(client, "deny");
     check(
       exercisedQuestionAndApproval(denied.approvalPauses, denied.questionPauses),
       `deny path exercised AskUQ (${denied.questionPauses}x) and approval (${denied.approvalPauses}x)`,
     );
-    check(
-      askUqPrecedesApproval(denied.events),
-      "deny path: the audience question paused the session before the approval gate",
-    );
     const releasedAfterDeny = store.audits().filter((record) => record.outcome === "released");
     check(releasedAfterDeny.length === 0, "deny path: zero release transitions in the vault");
+    check(store.receiptCount() === 0, "deny path: zero receipts in the vault");
+
+    // ---- MISSING PURPOSE path -------------------------------------------
+    const missingPurpose = await runSession(
+      client,
+      "deny",
+      GATE_A_MISSING_PURPOSE_MESSAGE,
+      `${ALLOWED_PURPOSE} (Recommended)`,
+    );
     check(
-      store.audits().every((record) => store.getReceipt(record.queryId) === undefined),
-      "deny path: zero receipts in the vault",
+      exercisedQuestionAndApproval(missingPurpose.approvalPauses, missingPurpose.questionPauses),
+      `missing-purpose path exercised AskUQ (${missingPurpose.questionPauses}x) and approval (${missingPurpose.approvalPauses}x)`,
+    );
+    check(
+      store.audits().every((record) => record.outcome !== "released"),
+      "missing-purpose denied path: zero release transitions",
+    );
+
+    // ---- HUMAN EXCEPTION path ------------------------------------------
+    const exception = await runExceptionSession(client);
+    check(exception.questionPauses >= 1, "exception path exercised AskUQ");
+    check(exception.approvalPauses === 0, "exception path never reached approval");
+    check(
+      store.audits().every((record) => record.outcome !== "released"),
+      "exception path: zero release transitions",
     );
 
     // ---- ALLOW path ------------------------------------------------------
@@ -173,10 +208,6 @@ async function main(): Promise<void> {
     check(
       exercisedQuestionAndApproval(allowed.approvalPauses, allowed.questionPauses),
       `allow path exercised AskUQ (${allowed.questionPauses}x) and approval (${allowed.approvalPauses}x)`,
-    );
-    check(
-      askUqPrecedesApproval(allowed.events),
-      "allow path: the audience question paused the session before the approval gate",
     );
     const released = store.audits().filter((record) => record.outcome === "released");
     check(released.length === 1, `allow path: exactly one release transition (${released.length})`);
@@ -187,7 +218,16 @@ async function main(): Promise<void> {
     // ---- Persisted-event assertions -------------------------------------
     const listedAllowTurns = await listSessionTurnIds(baseUrl, allowed.sessionId);
     const listedDenyTurns = await listSessionTurnIds(baseUrl, denied.sessionId);
-    if (!listedAllowTurns.ok || !listedDenyTurns.ok) throw new Error("turn list fetch failed");
+    const listedMissingPurposeTurns = await listSessionTurnIds(baseUrl, missingPurpose.sessionId);
+    const listedExceptionTurns = await listSessionTurnIds(baseUrl, exception.sessionId);
+    if (
+      !listedAllowTurns.ok ||
+      !listedDenyTurns.ok ||
+      !listedMissingPurposeTurns.ok ||
+      !listedExceptionTurns.ok
+    ) {
+      throw new Error("turn list fetch failed");
+    }
     const allowTurnIds = listedAllowTurns.turnIds;
     const denyTurnIds = listedDenyTurns.turnIds;
     const persistedAllow = await loadLiveSessionEvidence(baseUrl, {
@@ -200,13 +240,54 @@ async function main(): Promise<void> {
       agentType: "inline",
       turnIds: denyTurnIds,
     });
+    const persistedMissingPurpose = await loadLiveSessionEvidence(baseUrl, {
+      sessionId: missingPurpose.sessionId,
+      agentType: "inline",
+      turnIds: listedMissingPurposeTurns.turnIds,
+    });
+    const persistedException = await loadLiveSessionEvidence(baseUrl, {
+      sessionId: exception.sessionId,
+      agentType: "inline",
+      turnIds: listedExceptionTurns.turnIds,
+    });
     check(persistedAllow.ok, "allow path: persisted events fetched completely");
     check(persistedDeny.ok, "deny path: persisted events fetched completely");
-    if (!persistedAllow.ok || !persistedDeny.ok) throw new Error("persisted fetch failed");
+    check(persistedMissingPurpose.ok, "missing-purpose events fetched completely");
+    check(persistedException.ok, "exception events fetched completely");
+    if (
+      !persistedAllow.ok ||
+      !persistedDeny.ok ||
+      !persistedMissingPurpose.ok ||
+      !persistedException.ok
+    ) {
+      throw new Error("persisted fetch failed");
+    }
     if (receipt === undefined) throw new Error("allow path produced no receipt");
 
-    check(hasAskUserQuestion(persistedAllow.events), "persisted allow stream contains AskUQ");
-    check(hasAskUserQuestion(persistedDeny.events), "persisted deny stream contains AskUQ");
+    check(
+      askUqPrecedesApproval(persistedAllow.events as GateStreamEvent[]),
+      "persisted allow stream binds the AskUQ pause before release approval",
+    );
+    check(
+      askUqPrecedesApproval(persistedDeny.events as GateStreamEvent[]),
+      "persisted deny stream binds the AskUQ pause before release approval",
+    );
+    check(
+      askUqPrecedesApproval(persistedMissingPurpose.events as GateStreamEvent[], ALLOWED_PURPOSE),
+      "persisted missing-purpose stream binds its AskUQ pause before release approval",
+    );
+    check(
+      exceptionQuestionPrecedesVaultTools(persistedException.events as GateStreamEvent[]),
+      "persisted exception stream pauses before any vault tool",
+    );
+    check(
+      !persistedException.events.some((event) => event.type === "tool.approval_required"),
+      "persisted exception stream contains no approval gate",
+    );
+    check(
+      openUiBlocksRelayedVerbatim(persistedAllow.events),
+      "persisted allow stream relays every vault-authored OpenUI block verbatim",
+    );
 
     const allowGated = gatedCallPositions(persistedAllow.events);
     check(allowGated.size >= 1, "persisted allow stream contains an approval_required gate");
@@ -237,6 +318,12 @@ async function main(): Promise<void> {
     for (const failure of persistedBoundaryFailures) {
       check(false, failure);
     }
+    for (const failure of gateABoundaryFailures(
+      persistedMissingPurpose.events,
+      persistedException.events,
+    )) {
+      check(false, `additional path: ${failure}`);
+    }
 
     // ---- Bundle for verify-receipt / Gate B ------------------------------
     const candidate = store.getPrepared(queryId)?.candidate;
@@ -259,9 +346,13 @@ async function main(): Promise<void> {
           pass: failures.length === 0,
           failures,
           denySessionId: denied.sessionId,
+          missingPurposeSessionId: missingPurpose.sessionId,
+          exceptionSessionId: exception.sessionId,
           allowSessionId: allowed.sessionId,
           allowTurnIds,
           denyQuestionPauses: denied.questionPauses,
+          missingPurposeQuestionPauses: missingPurpose.questionPauses,
+          exceptionQuestionPauses: exception.questionPauses,
           allowQuestionPauses: allowed.questionPauses,
           receiptId: receipt.receiptId,
           auditOutcomes: store.audits().map((record) => record.outcome),
@@ -271,7 +362,7 @@ async function main(): Promise<void> {
       ),
     );
   } finally {
-    await vault.close();
+    await vault?.close();
     db.close();
   }
 

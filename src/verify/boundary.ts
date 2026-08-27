@@ -21,6 +21,22 @@ const RAW_PATTERNS: ReadonlyArray<readonly [string, RegExp]> = [
   ["synthetic phone value", /\+\d[\d\s\-()]{7,}\d/],
 ];
 
+// Shared leak net for the gates: collect every string in a decoded structure
+// and test it with the same values and patterns applied to MCP responses.
+export function stringsIn(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.flatMap(stringsIn);
+  if (typeof value !== "object" || value === null) return [];
+  return Object.values(value).flatMap(stringsIn);
+}
+
+export function containsRawValue(content: string): boolean {
+  return (
+    SYNTHETIC_SENSITIVE_VALUES.some((value) => content.includes(value)) ||
+    RAW_PATTERNS.some(([, pattern]) => pattern.test(content))
+  );
+}
+
 function scanContent(content: string): {
   readonly hasSensitiveKey: boolean;
   readonly strings: string[];

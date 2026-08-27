@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { ALLOWED_AUDIENCE, ALLOWED_PURPOSE } from "../contract/policy.js";
-import { lintOpenUiBlock } from "../render/lint.js";
 import { CANARY } from "../vault/seed.js";
 import { buildAgentManifest } from "./manifest.js";
 import { ROOT_AGENT_PROMPT } from "./prompt.js";
@@ -45,72 +44,30 @@ describe("ROOT_AGENT_PROMPT", () => {
     expect(ROOT_AGENT_PROMPT).toContain("ask_user_question");
   });
 
+  it("routes exception requests through AskUQ before any vault tool", () => {
+    expect(ROOT_AGENT_PROMPT).toContain("requests an exception");
+    expect(ROOT_AGENT_PROMPT).toContain("your FIRST action MUST be ask_user_question");
+    expect(ROOT_AGENT_PROMPT).toContain("including describe_dataset");
+    expect(ROOT_AGENT_PROMPT).toContain("Stop (Recommended)");
+  });
+
   it("instructs emitting openui blocks", () => {
     expect(ROOT_AGENT_PROMPT).toContain("openui");
   });
 });
 
 describe("production OpenUI templates", () => {
-  const blocks = [...ROOT_AGENT_PROMPT.matchAll(/```openui\n([\s\S]*?)\n```/g)].map(
-    (match) => match[1] ?? "",
-  );
-
-  it("defines a pinned-runtime root in every card", () => {
-    expect(blocks).toHaveLength(3);
-    for (const block of blocks) expect(block).toContain("root = Stack(");
+  it("contains no model-filled card templates or placeholders", () => {
+    expect(ROOT_AGENT_PROMPT).not.toContain("```openui");
+    expect(ROOT_AGENT_PROMPT).not.toMatch(/\{[A-Za-z]+\}/);
   });
 
-  it("uses only components present in the pinned OpenUI instructions", () => {
-    expect(ROOT_AGENT_PROMPT).not.toContain("KeyValue(");
-    expect(ROOT_AGENT_PROMPT).toContain("TextContent(");
-    expect(ROOT_AGENT_PROMPT).toContain('Callout("success",');
-    expect(ROOT_AGENT_PROMPT).toContain('Callout("error",');
-  });
-
-  it("keeps denial text to deterministic finding codes", () => {
-    expect(ROOT_AGENT_PROMPT).toContain("finding.code values only");
-    expect(ROOT_AGENT_PROMPT).not.toContain("{detail}");
-    expect(ROOT_AGENT_PROMPT).not.toContain("{rows}");
-  });
-
-  // Origin binding: a placeholder the model fills must correspond to a typed
-  // field of a vault tool response. A placeholder outside this set would
-  // invite model-authored card values.
-  const VAULT_TYPED_FIELDS: Record<string, string> = {
-    queryId: "q-11111111-1111-1111-1111-111111111111",
-    contractHash: "a".repeat(64),
-    outputHash: "b".repeat(64),
-    suppressedCells: "14",
-    status: "denied",
-    commaSeparatedFindingCodes: "purpose_not_allowed, small_cell",
-    receiptId: "r-22222222-2222-2222-2222-222222222222",
-    datasetVersion: "support-tickets-v1",
-    policyVersion: "policy-v1",
-  };
-
-  it("binds every card placeholder to a typed vault response field", () => {
-    const tokens = [...ROOT_AGENT_PROMPT.matchAll(/\{([A-Za-z]+)\}/g)].map((match) => match[1]);
-    expect(tokens.length).toBeGreaterThan(0);
-    for (const token of tokens) {
-      expect(Object.keys(VAULT_TYPED_FIELDS), `untyped placeholder {${token}}`).toContain(token);
-    }
-  });
-
-  it("card templates are grammatical OpenUI once vault values are substituted", () => {
-    expect(blocks).toHaveLength(3);
-    for (const block of blocks) {
-      const filled = `\`\`\`openui\n${block}\n\`\`\``.replace(
-        /\{([A-Za-z]+)\}/g,
-        (_, token: string) => VAULT_TYPED_FIELDS[token] ?? "MISSING",
-      );
-      expect(filled).not.toContain("MISSING");
-      expect(lintOpenUiBlock(filled)).toEqual([]);
-    }
-  });
-
-  it("instructs pasting the vault-authored chart block verbatim", () => {
+  it("instructs pasting every vault-authored block verbatim", () => {
     expect(ROOT_AGENT_PROMPT).toContain("VERBATIM");
-    expect(ROOT_AGENT_PROMPT).toContain("Never author, edit, or re-assemble chart content");
+    expect(ROOT_AGENT_PROMPT).toContain("validate_release response contains a complete");
+    expect(ROOT_AGENT_PROMPT).toContain("release_result response contains a complete");
+    expect(ROOT_AGENT_PROMPT).toContain("render_safe_chart");
+    expect(ROOT_AGENT_PROMPT).toContain("Never author, edit, or re-assemble");
   });
 });
 

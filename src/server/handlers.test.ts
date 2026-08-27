@@ -75,6 +75,10 @@ describe("prepare_analysis", () => {
         metric: "ticket_count",
       });
       expect(result.isError).toBe(true);
+      const denial = payload(result);
+      expect(denial.error).toBe("mission_not_authorized");
+      expect(denial.openui).toContain("Release blocked");
+      expect(denial.openui).toContain("_not_authorized");
     }
     expect(aggregateCalls).toBe(0);
   });
@@ -160,10 +164,14 @@ describe("prepare_analysis", () => {
       status: string;
       contractHash: string;
       outputHash: string;
+      openui: string;
     };
     expect(verdict.status).toBe("approved");
     expect(verdict.contractHash).toMatch(/^[0-9a-f]{64}$/);
     expect(verdict.outputHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(verdict.openui).toContain(prepared.queryId);
+    expect(verdict.openui).toContain(verdict.contractHash);
+    expect(verdict.openui).toContain(verdict.outputHash);
   });
 
   it("denies a stored candidate that violates the contract — storage is not trust", () => {
@@ -189,9 +197,13 @@ describe("prepare_analysis", () => {
     const verdict = payload(handlers.validateRelease({ queryId: smuggled.queryId })) as unknown as {
       status: string;
       findings: Array<{ code: string }>;
+      findingCodes: string;
+      openui: string;
     };
     expect(verdict.status).toBe("denied");
     expect(verdict.findings.map((finding) => finding.code)).toContain("purpose_not_authorized");
+    expect(verdict.findingCodes).toBe("purpose_not_authorized");
+    expect(verdict.openui).toContain("purpose_not_authorized");
   });
 
   it("never carries a sensitive value in any candidate payload", () => {
@@ -252,9 +264,13 @@ describe("release_result", () => {
     const released = payload(handlers.releaseResult(input)) as unknown as {
       receipt: { receiptId: string; contractHash: string; outputHash: string };
       rows: Array<Record<string, unknown>>;
+      openui: string;
     };
     expect(released.receipt.receiptId).toMatch(/^r-[0-9a-f-]{36}$/);
     expect(released.receipt.contractHash).toBe(contractHash);
+    expect(released.openui).toContain(released.receipt.receiptId);
+    expect(released.openui).toContain(released.receipt.contractHash);
+    expect(released.openui).toContain(released.receipt.outputHash);
     for (const row of released.rows) {
       expect(row.group_size).toBeUndefined();
     }
@@ -682,6 +698,19 @@ describe("fail-closed hardening", () => {
     expect(() => store2.saveReceipt(receipt)).toThrow();
   });
 
+  it("counts receipts independently of the audit log", () => {
+    const store2 = createVaultStore();
+    store2.saveReceipt({
+      queryId: "q-orphan",
+      contractHash: "0".repeat(64) as Sha256Hex,
+      outputHash: "0".repeat(64) as Sha256Hex,
+      datasetVersion: "support-tickets-v1",
+      policyVersion: "policy-v1",
+    });
+    expect(store2.audits()).toEqual([]);
+    expect(store2.receiptCount()).toBe(1);
+  });
+
   it("audits needs_review when a stored candidate is malformed", () => {
     const base = {
       purpose: goodMission.purpose,
@@ -747,5 +776,30 @@ describe("render_safe_chart", () => {
     const text = JSON.stringify(chart);
     expect(text).not.toContain(CANARY.email);
     expect(text).not.toContain("@");
+  });
+
+  it("returns the vault-authored OpenUI block with the exact suppression count", () => {
+    const input = prepareValidated();
+    const { queryId, suppressedCells } = input;
+    handlers.releaseResult(input);
+    const chart = payload(handlers.renderSafeChart({ queryId })) as unknown as {
+      receiptId: string;
+      rows: Array<Record<string, unknown>>;
+      openui: string;
+    };
+    const lines = chart.openui.split("\n");
+    expect(lines[0]).toBe("```openui");
+    expect(lines[1]).toBe("root = Stack([card])");
+    expect(lines.at(-1)).toBe("```");
+    expect(chart.openui).toContain(`receipt ${chart.receiptId}`);
+    // One bar per released row — suppressed cells are never drawn as zeros.
+    const series = /series = Series\("ticket_count", \[([^\]]*)\]\)/.exec(chart.openui);
+    expect(series?.[1]?.split(", ")).toHaveLength(chart.rows.length);
+    // The marker states the vault's own fine-cell suppression count without
+    // deriving a false denominator from coarser released rows.
+    expect(chart.openui).toContain(
+      `${suppressedCells} finest-granularity aggregate cells suppressed inside the vault (k >= 3)`,
+    );
+    expect(chart.openui).not.toContain(`${suppressedCells} of `);
   });
 });
