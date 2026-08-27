@@ -36,21 +36,26 @@ function record(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-// MCP tool results arrive either as the decoded payload or wrapped in the MCP
-// content envelope ({content: [{type: "text", text}]}); both forms decode to
-// the vault's JSON body, and anything unparseable is ignored.
+// MCP tool results arrive either decoded or in a text content/error envelope.
+// Both forms decode to the vault's JSON body; anything unparseable is ignored.
 function decodeToolResult(result: unknown): Record<string, unknown> | null {
-  const wrapper = record(result);
+  let wrapper = record(result);
   if (wrapper === null) {
     if (typeof result !== "string") return null;
     try {
-      return record(JSON.parse(result));
+      wrapper = record(JSON.parse(result));
     } catch {
       return null;
     }
   }
-  if (Array.isArray(wrapper.content)) {
-    const first = record(wrapper.content[0]);
+  if (wrapper === null) return null;
+  const content = Array.isArray(wrapper.content)
+    ? wrapper.content
+    : Array.isArray(wrapper.error)
+      ? wrapper.error
+      : null;
+  if (content !== null) {
+    const first = record(content[0]);
     if (typeof first?.text === "string") {
       try {
         return record(JSON.parse(first.text));
@@ -68,6 +73,13 @@ function strings(value: unknown): string[] | undefined {
     : undefined;
 }
 
+function recordDenial(body: Record<string, unknown>, evidence: ClearanceEvidence): void {
+  if (typeof body.error !== "string") return;
+  evidence.denialCode =
+    typeof body.detail === "string" ? `${body.error}: ${body.detail}` : body.error;
+  if (typeof body.findingCodes === "string") evidence.findingCodes = body.findingCodes;
+}
+
 export function extractEvidence(messages: readonly ThreadMessageLike[]): ClearanceEvidence {
   const evidence: ClearanceEvidence = {};
   for (const message of messages) {
@@ -77,6 +89,15 @@ export function extractEvidence(messages: readonly ThreadMessageLike[]): Clearan
       if (call.type !== "tool-call" || typeof call.toolName !== "string") continue;
       const body = decodeToolResult(call.result);
       if (body === null) continue;
+      if (
+        call.toolName === "describe_dataset" ||
+        call.toolName === "prepare_analysis" ||
+        call.toolName === "validate_release" ||
+        call.toolName === "release_result" ||
+        call.toolName === "render_safe_chart"
+      ) {
+        recordDenial(body, evidence);
+      }
 
       if (call.toolName === "prepare_analysis") {
         if (typeof body.queryId === "string") {
@@ -88,11 +109,6 @@ export function extractEvidence(messages: readonly ThreadMessageLike[]): Clearan
           if (typeof body.suppressedCells === "number") {
             evidence.suppressedCells = body.suppressedCells;
           }
-        } else if (typeof body.error === "string") {
-          // A denied mission is the vault's most significant enforcement
-          // event — the rail must show it, not sit on "NO MISSION".
-          evidence.denialCode = body.error;
-          if (typeof body.findingCodes === "string") evidence.findingCodes = body.findingCodes;
         }
       }
       if (call.toolName === "validate_release") {
@@ -111,10 +127,8 @@ export function extractEvidence(messages: readonly ThreadMessageLike[]): Clearan
           if (typeof receipt.policyVersion === "string") {
             evidence.policyVersion = receipt.policyVersion;
           }
-        } else if (typeof body.error === "string") {
-          evidence.denialCode =
-            typeof body.detail === "string" ? `${body.error}: ${body.detail}` : body.error;
         }
+        if (typeof body.status === "string") evidence.verdict = body.status;
       }
       if (call.toolName === "render_safe_chart" && typeof body.openui === "string") {
         evidence.chartRendered = true;
@@ -124,26 +138,13 @@ export function extractEvidence(messages: readonly ThreadMessageLike[]): Clearan
   return evidence;
 }
 
-// The pending release approval's human-approved tuple, straight from the tool
-// call the model is asking to run — this is what the approval bar makes the
-// hero of the decision.
-export function pendingReleaseTuple(
-  messages: readonly ThreadMessageLike[],
+export function releaseTupleFromArgsText(
+  argsText: string | undefined,
 ): Record<string, unknown> | null {
-  for (let index = messages.length - 1; index >= 0; index--) {
-    const message = messages[index];
-    if (message?.role !== "assistant" || !Array.isArray(message.content)) continue;
-    for (const part of message.content) {
-      const call = part as ToolCallPart;
-      if (call.type !== "tool-call" || call.toolName !== "release_result") continue;
-      if (call.result !== undefined) continue;
-      return record(call.args);
-    }
+  if (argsText === undefined) return null;
+  try {
+    return record(JSON.parse(argsText));
+  } catch {
+    return null;
   }
-  return null;
-}
-
-export function shortHash(hash: string | undefined): string {
-  if (hash === undefined) return "—";
-  return hash.length > 18 ? `${hash.slice(0, 10)}…${hash.slice(-6)}` : hash;
 }

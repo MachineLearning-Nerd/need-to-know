@@ -1,7 +1,7 @@
-import { useAuiState } from "@truefoundry/trueforge-ui/assistant-ui";
+import { useAui, useAuiState } from "@truefoundry/trueforge-ui/assistant-ui";
 import { useMemo } from "react";
 
-import { type ClearanceEvidence, extractEvidence, shortHash } from "./evidence.js";
+import { type ClearanceEvidence, extractEvidence } from "./evidence.js";
 
 function Row({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
@@ -28,10 +28,16 @@ function stage(evidence: ClearanceEvidence): { label: string; tone: string } {
 // conversation, derived exclusively from what the vault's tool responses said
 // in this thread. If nothing was prepared, it says so instead of decorating.
 export function EvidenceRail() {
-  // Select the stable messages reference; derive in a memo so the selector
-  // never returns a fresh object (React's external-store snapshot contract).
-  const messages = useAuiState((state) => state.thread.messages);
-  const evidence = useMemo(() => extractEvidence(messages), [messages]);
+  const aui = useAui();
+  const threadRevision = useAuiState((state) => {
+    const messages = state.thread.messages;
+    const lastMessage = messages.at(-1);
+    return `${state.threadListItem.id}:${messages.length}:${lastMessage?.id ?? ""}:${lastMessage?.status?.type ?? ""}:${state.thread.isLoading}:${state.thread.isRunning}`;
+  });
+  const evidence = useMemo(() => {
+    void threadRevision;
+    return extractEvidence(aui.thread().getState().messages);
+  }, [aui, threadRevision]);
   const { label, tone } = stage(evidence);
   return (
     <aside className="ck-rail">
@@ -50,8 +56,8 @@ export function EvidenceRail() {
       <div className="ck-rail-section">Contract</div>
       <Row label="Verdict" value={evidence.verdict ?? "—"} />
       {evidence.findingCodes ? <Row label="Findings" value={evidence.findingCodes} /> : null}
-      <Row label="Contract" value={shortHash(evidence.contractHash)} mono />
-      <Row label="Output" value={shortHash(evidence.outputHash)} mono />
+      <Row label="Contract" value={evidence.contractHash ?? "—"} mono />
+      <Row label="Output" value={evidence.outputHash ?? "—"} mono />
 
       <div className="ck-rail-section">Ledger</div>
       <Row label="Query" value={evidence.queryId ?? "—"} mono />
@@ -68,8 +74,8 @@ export function EvidenceRail() {
       <Row label="Chart" value={evidence.chartRendered === true ? "rendered from release" : "—"} />
 
       <div className="ck-rail-footnote">
-        Every value above is read from the vault's persisted tool responses in this session —
-        nothing is computed client-side.
+        Evidence fields come from vault tool responses in this thread. The stage label summarizes
+        their current status.
       </div>
     </aside>
   );

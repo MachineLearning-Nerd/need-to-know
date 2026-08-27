@@ -5,6 +5,15 @@ import { defineConfig } from "vite";
 // harness so the UI SDK's default baseUrl ("/") works without CORS.
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    dedupe: [
+      "react",
+      "react-dom",
+      "@assistant-ui/core",
+      "@assistant-ui/react",
+      "@assistant-ui/store",
+    ],
+  },
   server: {
     port: 5178,
     proxy: {

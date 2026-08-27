@@ -4,14 +4,13 @@ import {
   type AskUserPromptProps,
   ToolApprovalBar as DefaultToolApprovalBar,
   defaultSlots,
-  SubAgentCard,
   type SubAgentCardProps,
   type ToolApprovalBarProps,
 } from "@truefoundry/trueforge-ui";
 import { useAuiState } from "@truefoundry/trueforge-ui/assistant-ui";
 import { useMemo } from "react";
 
-import { pendingReleaseTuple, shortHash } from "./evidence.js";
+import { releaseTupleFromArgsText } from "./evidence.js";
 
 function asString(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
@@ -33,10 +32,12 @@ function TupleRow({ label, value, mono }: { label: string; value: string; mono?:
 // read from the pending tool call itself, then hands the actual decision to
 // the stock bar so approve/deny semantics stay exactly the runtime's.
 export function ClearanceApprovalBar(props: ToolApprovalBarProps) {
-  const messages = useAuiState((state) => state.thread.messages);
+  const argsText = useAuiState((state) =>
+    state.part.type === "tool-call" ? state.part.argsText : undefined,
+  );
   const tuple = useMemo(
-    () => (props.toolName === "release_result" ? pendingReleaseTuple(messages) : null),
-    [messages, props.toolName],
+    () => (props.toolName === "release_result" ? releaseTupleFromArgsText(argsText) : null),
+    [argsText, props.toolName],
   );
   const decided = props.status !== undefined;
   return (
@@ -60,12 +61,8 @@ export function ClearanceApprovalBar(props: ToolApprovalBarProps) {
               />
               <TupleRow label="Suppressed cells" value={String(tuple.suppressedCells ?? "—")} />
               <TupleRow label="Query" value={String(tuple.queryId ?? "—")} mono />
-              <TupleRow
-                label="Contract hash"
-                value={shortHash(asString(tuple.contractHash))}
-                mono
-              />
-              <TupleRow label="Output hash" value={shortHash(asString(tuple.outputHash))} mono />
+              <TupleRow label="Contract hash" value={asString(tuple.contractHash) ?? "—"} mono />
+              <TupleRow label="Output hash" value={asString(tuple.outputHash) ?? "—"} mono />
             </>
           )}
         </div>
@@ -104,14 +101,11 @@ export function ClearanceAgentSteps(props: AgentStepsCardProps) {
 // T8.4 — the reviewer moment. Subagents are deliberately disabled in this
 // deployment (root-only enforcement), so any child agent in a stream is a
 // policy violation worth shouting about, not a card to render politely.
-export function ClearanceSubAgentCard(props: SubAgentCardProps) {
+export function ClearanceSubAgentCard(_props: SubAgentCardProps) {
   return (
-    <div className="ck-subagent-violation">
-      <div className="ck-subagent-warning">
-        Subagents are disabled in this deployment — a child agent in this stream would fail
-        verification (approval_source_mismatch).
-      </div>
-      <SubAgentCard {...props} />
+    <div className="ck-subagent-warning" role="alert">
+      Subagents are disabled in this deployment — a child agent in this stream would fail
+      verification (approval_source_mismatch).
     </div>
   );
 }
