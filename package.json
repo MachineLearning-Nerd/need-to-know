@@ -24,7 +24,8 @@
     "gate-a": "node --import ./scripts/register-ts-loader.mjs scripts/gate-a.ts",
     "gate-b": "node --import ./scripts/register-ts-loader.mjs scripts/gate-b.ts",
     "gate-c": "node --import ./scripts/register-ts-loader.mjs scripts/gate-c.ts",
-    "reconnect-proof": "node --import ./scripts/register-ts-loader.mjs scripts/reconnect-proof.ts"
+    "reconnect-proof": "node --import ./scripts/register-ts-loader.mjs scripts/reconnect-proof.ts",
+    "clean-run": "node --import ./scripts/register-ts-loader.mjs scripts/clean-run.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.30.0",
