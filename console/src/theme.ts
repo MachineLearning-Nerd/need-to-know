@@ -1,0 +1,43 @@
+import type { ThemeConfig } from "@truefoundry/trueforge-ui";
+
+// Savile Row: charcoal wool, midnight lining, a restrained gold pin. All
+// colors are oklch so the palette stays perceptually even across surfaces.
+export const clearanceTheme: ThemeConfig = {
+  preset: "trueforge",
+  mode: "dark",
+  brand: { name: "Need-to-Know — Clearance Console" },
+  tokens: {
+    fontFamily: "'Avenir Next', 'Helvetica Neue', system-ui, sans-serif",
+    sidebarBg: "oklch(0.19 0.012 265)",
+    topbarBg: "oklch(0.19 0.012 265)",
+    primaryBg: "oklch(0.16 0.01 265)",
+    secondaryBg: "oklch(0.22 0.014 265)",
+    cardBg: "oklch(0.22 0.014 265)",
+    border: "oklch(0.32 0.02 265)",
+    inputBoxBg: "oklch(0.24 0.015 265)",
+    inputBorder: "oklch(0.38 0.025 265)",
+    textPrimary: "oklch(0.93 0.008 90)",
+    textSecondary: "oklch(0.68 0.015 265)",
+    userMessageBg: "oklch(0.32 0.05 265)",
+    userMessageText: "oklch(0.95 0.006 90)",
+    assistantMessageBg: "oklch(0.2 0.012 265)",
+    assistantMessageText: "oklch(0.93 0.008 90)",
+    primaryButtonBg: "oklch(0.75 0.12 85)",
+    primaryButtonHover: "oklch(0.8 0.13 85)",
+    primaryButtonText: "oklch(0.2 0.02 85)",
+    secondaryButtonBg: "oklch(0.28 0.02 265)",
+    secondaryButtonHover: "oklch(0.33 0.025 265)",
+    secondaryButtonText: "oklch(0.9 0.01 90)",
+    successBg: "oklch(0.42 0.09 155)",
+    successText: "oklch(0.9 0.06 155)",
+    failureBg: "oklch(0.42 0.13 25)",
+    failureText: "oklch(0.9 0.05 25)",
+    warningBg: "oklch(0.5 0.1 85)",
+    warningText: "oklch(0.93 0.07 85)",
+    focusRing: "oklch(0.75 0.12 85)",
+    radius: "10px",
+    composerRadius: "14px",
+    dropdownSelectedItemBg: "oklch(0.3 0.03 265)",
+    dropdownSelectedItemText: "oklch(0.95 0.006 90)",
+  },
+};
