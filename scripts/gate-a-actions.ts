@@ -555,6 +555,11 @@ export function openUiBlocksRelayedVerbatim(events: readonly PersistedEvent[]): 
       }
       if (openUiFence.test(remaining)) return false;
     }
+    // Reasoning is assistant-owned but never part of the rendered
+    // presentation, so no fence syntax is legitimate there at all.
+    if (stringsIn(event.reasoning_content).some((text) => openUiFence.test(text))) {
+      return false;
+    }
   }
   return expectedBlocks.every((block) => relayCounts.get(block) === 1);
 }

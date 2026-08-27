@@ -669,6 +669,21 @@ describe("openUiBlocksRelayedVerbatim", () => {
     }
   });
 
+  it("rejects an OpenUI fence hidden in persisted assistant reasoning", () => {
+    expect(
+      openUiBlocksRelayedVerbatim([
+        ...validPrefix,
+        { type: "model.message", thread_id: "main", content: chartBlock },
+        {
+          type: "model.message",
+          thread_id: "main",
+          content: "Done.",
+          reasoning_content: "```openui\nroot = Stack([rogue])\n```",
+        },
+      ]),
+    ).toBe(false);
+  });
+
   it("rejects tool responses and relays outside the root thread", () => {
     expect(
       openUiBlocksRelayedVerbatim([

@@ -41,6 +41,7 @@ import {
   openUiBlocksRelayedVerbatim,
   pendingSessionInput,
 } from "./gate-a-actions.js";
+import { gateCRefusalFailures } from "./gate-c-actions.js";
 
 const baseUrl = process.env.TRUEFORGE_BASE_URL ?? "http://localhost:8891";
 const vaultPort = Number(process.env.VAULT_PORT ?? 8788);
@@ -283,6 +284,18 @@ async function main(): Promise<void> {
     check(
       !persistedException.events.some((event) => event.type === "tool.approval_required"),
       "persisted exception stream contains no approval gate",
+    );
+    // Same refusal bar as Gate C: exact terminal Stop confirmation, no
+    // interim prose, no vault tools, no leaked values.
+    const exceptionRefusal = gateCRefusalFailures(
+      persistedException.events,
+      exception.approvalPauses,
+    );
+    check(
+      exceptionRefusal.length === 0,
+      `persisted exception stream is an exact Stop refusal${
+        exceptionRefusal.length > 0 ? ` (${exceptionRefusal.join("; ")})` : ""
+      }`,
     );
     check(
       openUiBlocksRelayedVerbatim(persistedAllow.events),
