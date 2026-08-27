@@ -18,6 +18,7 @@ function stage(evidence: ClearanceEvidence): { label: string; tone: string } {
   if (evidence.receiptId !== undefined) return { label: "RELEASED", tone: "ck-tone-released" };
   if (evidence.denialCode !== undefined) return { label: "DENIED", tone: "ck-tone-denied" };
   if (evidence.verdict === "approved") return { label: "CLEARED", tone: "ck-tone-cleared" };
+  if (evidence.verdict === "denied") return { label: "DENIED", tone: "ck-tone-denied" };
   if (evidence.verdict !== undefined) return { label: "HELD", tone: "ck-tone-denied" };
   if (evidence.queryId !== undefined) return { label: "PREPARED", tone: "ck-tone-prepared" };
   return { label: "NO MISSION", tone: "ck-tone-idle" };

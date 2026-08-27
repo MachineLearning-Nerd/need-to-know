@@ -13,6 +13,10 @@ import { useMemo } from "react";
 
 import { pendingReleaseTuple, shortHash } from "./evidence.js";
 
+function asString(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
 function TupleRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="ck-tuple-row">
@@ -56,8 +60,12 @@ export function ClearanceApprovalBar(props: ToolApprovalBarProps) {
               />
               <TupleRow label="Suppressed cells" value={String(tuple.suppressedCells ?? "—")} />
               <TupleRow label="Query" value={String(tuple.queryId ?? "—")} mono />
-              <TupleRow label="Contract hash" value={shortHash(String(tuple.contractHash))} mono />
-              <TupleRow label="Output hash" value={shortHash(String(tuple.outputHash))} mono />
+              <TupleRow
+                label="Contract hash"
+                value={shortHash(asString(tuple.contractHash))}
+                mono
+              />
+              <TupleRow label="Output hash" value={shortHash(asString(tuple.outputHash))} mono />
             </>
           )}
         </div>

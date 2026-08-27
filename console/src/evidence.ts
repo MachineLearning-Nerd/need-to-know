@@ -78,14 +78,21 @@ export function extractEvidence(messages: readonly ThreadMessageLike[]): Clearan
       const body = decodeToolResult(call.result);
       if (body === null) continue;
 
-      if (call.toolName === "prepare_analysis" && typeof body.queryId === "string") {
-        const candidate = record(body.candidate);
-        evidence.queryId = body.queryId;
-        if (typeof candidate?.purpose === "string") evidence.purpose = candidate.purpose;
-        if (typeof candidate?.audience === "string") evidence.audience = candidate.audience;
-        evidence.columns = strings(candidate?.columns);
-        if (typeof body.suppressedCells === "number") {
-          evidence.suppressedCells = body.suppressedCells;
+      if (call.toolName === "prepare_analysis") {
+        if (typeof body.queryId === "string") {
+          const candidate = record(body.candidate);
+          evidence.queryId = body.queryId;
+          if (typeof candidate?.purpose === "string") evidence.purpose = candidate.purpose;
+          if (typeof candidate?.audience === "string") evidence.audience = candidate.audience;
+          evidence.columns = strings(candidate?.columns);
+          if (typeof body.suppressedCells === "number") {
+            evidence.suppressedCells = body.suppressedCells;
+          }
+        } else if (typeof body.error === "string") {
+          // A denied mission is the vault's most significant enforcement
+          // event — the rail must show it, not sit on "NO MISSION".
+          evidence.denialCode = body.error;
+          if (typeof body.findingCodes === "string") evidence.findingCodes = body.findingCodes;
         }
       }
       if (call.toolName === "validate_release") {
@@ -105,7 +112,8 @@ export function extractEvidence(messages: readonly ThreadMessageLike[]): Clearan
             evidence.policyVersion = receipt.policyVersion;
           }
         } else if (typeof body.error === "string") {
-          evidence.denialCode = body.error;
+          evidence.denialCode =
+            typeof body.detail === "string" ? `${body.error}: ${body.detail}` : body.error;
         }
       }
       if (call.toolName === "render_safe_chart" && typeof body.openui === "string") {
