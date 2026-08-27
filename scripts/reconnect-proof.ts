@@ -6,8 +6,9 @@
 //
 //   1. Seam integrity: sequence numbers across abort + resume are strictly
 //      consecutive — the first resumed event is lastSeq + 1.
-//   2. Persistence equality: the stitched non-delta events equal the
-//      persisted turn exactly, in order — nothing missed, nothing duplicated.
+//   2. Persistence equality: the stitched non-delta events match the persisted
+//      turn in order after the SDK's camel/snake conversion and known final
+//      model-message enrichment — nothing missed, duplicated, or altered.
 //   3. The demo flow still completes: AskUQ answered, release approved,
 //      exactly one receipt in the vault.
 //
@@ -24,10 +25,12 @@ import { createVaultStore } from "../src/server/store.js";
 import { openVaultDatabase } from "../src/vault/database.js";
 import { fetchTurnEvents } from "../src/verify/events.js";
 import {
+  exercisedQuestionAndApproval,
   GATE_A_USER_MESSAGE,
   type GateStreamEvent,
   pendingSessionInput,
 } from "./gate-a-actions.js";
+import { nonDeltaEventsMatchPersistence } from "./reconnect-events.js";
 
 const baseUrl = process.env.TRUEFORGE_BASE_URL ?? "http://localhost:8891";
 const vaultPort = Number(process.env.VAULT_PORT ?? 8788);
@@ -119,28 +122,29 @@ async function main(): Promise<void> {
     const persisted = await fetchTurnEvents(baseUrl, session.id, turnId);
     check(persisted.ok, "persisted turn events refetched completely");
     if (!persisted.ok) throw new Error(persisted.detail);
-    // Every model.message.delta carries its parent aggregate's event id (the
-    // id names the persisted event being built), so the once-and-only-once
-    // claim is over non-delta stream events: their ids, in order, must equal
-    // the persisted turn exactly — nothing missed, nothing duplicated.
-    const nonDeltaIds = stitched
-      .filter((event) => !event.data.type.endsWith(".delta"))
-      .map((event) => event.data.id)
-      .filter((id): id is string => typeof id === "string");
+    // Every model.message.delta carries its parent aggregate's event id, so
+    // the once-and-only-once claim is over non-delta events. The stream SDK
+    // camel-cases fields while persistence uses snake_case and enriches the
+    // final model message; the matcher allows exactly those differences.
+    const persistedEventsMatch = nonDeltaEventsMatchPersistence(stitched, persisted.events);
     const persistedIds = persisted.events
       .map((event) => event.id)
       .filter((id): id is string => typeof id === "string");
     check(
-      persistedIds.length > 0 && JSON.stringify(nonDeltaIds) === JSON.stringify(persistedIds),
-      `stitched non-delta events equal the persisted turn exactly (${persistedIds.length} events, order preserved)`,
+      persistedEventsMatch,
+      `stitched non-delta events are preserved in the persisted turn under the pinned SDK mapping (${persistedIds.length} events, order preserved)`,
     );
 
     // ---- Phase 4: finish the real flow on the same session ---------------
     const events = stitched.map((event) => event.data);
     const answeredCallIds = new Set<string>();
+    let approvalPauses = 0;
+    let questionPauses = 0;
     for (let round = 0; round < 4; round++) {
       const pending = pendingSessionInput(events, answeredCallIds, "allow");
       if (pending.input.length === 0) break;
+      approvalPauses += pending.approvalCount;
+      questionPauses += pending.questionCount;
       for (const item of pending.input) {
         answeredCallIds.add((item as { toolCallId: string }).toolCallId);
       }
@@ -149,6 +153,10 @@ async function main(): Promise<void> {
         events.push(data as GateStreamEvent);
       }
     }
+    check(
+      exercisedQuestionAndApproval(approvalPauses, questionPauses),
+      `interrupted flow exercised AskUQ (${questionPauses}x) and approval (${approvalPauses}x)`,
+    );
     const released = store.audits().filter((record) => record.outcome === "released");
     check(released.length === 1, "the interrupted demo flow still released exactly once");
     check(store.receiptCount() === 1, "exactly one receipt exists after reconnect");
@@ -166,6 +174,8 @@ async function main(): Promise<void> {
           resumedFromSequence: firstResumedSeq,
           stitchedEvents: stitched.length,
           persistedEvents: persistedIds.length,
+          questionPauses,
+          approvalPauses,
           stitchedTrace: stitched.map((event) => ({
             seq: event.seq,
             type: event.data.type,

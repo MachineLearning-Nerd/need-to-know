@@ -320,7 +320,7 @@ describe("failure injection over the wire", () => {
       // A caller that opens a release call and dies mid-body — the timeout
       // shape a flaky network produces. The vault must neither apply it nor
       // wedge on the dangling socket.
-      await new Promise<void>((resolve) => {
+      await new Promise<void>((resolve, reject) => {
         const socket = connect(live.port, "localhost", () => {
           socket.write(
             'POST /mcp HTTP/1.1\r\nHost: localhost\r\ncontent-type: application/json\r\ncontent-length: 500\r\n\r\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"release_result"',
@@ -330,6 +330,7 @@ describe("failure injection over the wire", () => {
             resolve();
           }, 50);
         });
+        socket.once("error", reject);
       });
 
       expect(store.audits()).toHaveLength(0);

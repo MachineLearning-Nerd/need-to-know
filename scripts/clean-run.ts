@@ -8,7 +8,7 @@
 // Usage: TRUEFORGE_BASE_URL=http://localhost:8891 npm run clean-run
 
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 // Resolved once and passed to BOTH children explicitly: gate-a defaults a
@@ -37,19 +37,70 @@ function readIndex(): RunRecord[] {
     if ((error as { code?: string }).code === "ENOENT") return [];
     throw error;
   }
-  // A corrupt ledger must fail loudly — treating it as empty would silently
-  // restart the attempt numbering and erase the historical denominator.
-  return JSON.parse(raw) as RunRecord[];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("runs/index.json is invalid");
+  }
+  if (!Array.isArray(parsed)) throw new Error("runs/index.json is invalid");
+  for (const [index, value] of parsed.entries()) {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw new Error("runs/index.json is invalid");
+    }
+    const record = value as Record<string, unknown>;
+    const valid =
+      record.attempt === index + 1 &&
+      typeof record.startedAt === "string" &&
+      Number.isFinite(Date.parse(record.startedAt)) &&
+      Number.isInteger(record.durationSeconds) &&
+      (record.durationSeconds as number) >= 0 &&
+      typeof record.gateAPass === "boolean" &&
+      typeof record.verifyPass === "boolean" &&
+      typeof record.clean === "boolean" &&
+      (!record.verifyPass || record.gateAPass === true) &&
+      record.clean === (record.gateAPass === true && record.verifyPass === true);
+    if (!valid) throw new Error("runs/index.json is invalid");
+  }
+  return parsed as RunRecord[];
+}
+
+function writeIndex(index: readonly RunRecord[]): void {
+  const temporaryPath = `${indexPath}.${process.pid}.tmp`;
+  writeFileSync(temporaryPath, JSON.stringify(index, null, 2), { flag: "wx" });
+  try {
+    renameSync(temporaryPath, indexPath);
+  } catch (error) {
+    unlinkSync(temporaryPath);
+    throw error;
+  }
 }
 
 const index = readIndex();
 const attempt = index.length + 1;
 const attemptDir = join(runsDir, `attempt-${attempt}`);
-mkdirSync(attemptDir, { recursive: true });
+mkdirSync(runsDir, { recursive: true });
 
 const bundlePath = join(attemptDir, "gate-a-bundle.json");
 const startedAt = new Date().toISOString();
 const startedMs = Date.now();
+const pendingRecord: RunRecord = {
+  attempt,
+  startedAt,
+  durationSeconds: 0,
+  gateAPass: false,
+  verifyPass: false,
+  clean: false,
+};
+index.push(pendingRecord);
+// Bank a not-clean record before creating the directory or starting either
+// child. A hard interruption can never disappear from the denominator or be
+// mistaken for a clean attempt — and because the record always lands first,
+// the next invocation numbers past it instead of colliding on the directory.
+writeIndex(index);
+// An interrupted attempt keeps this directory. Reusing it would overwrite
+// evidence while leaving the denominator unchanged, so collisions fail loud.
+mkdirSync(attemptDir);
 
 process.stdout.write(`clean-run: attempt ${attempt} — gate-a live\n`);
 const gateA = spawnSync(
@@ -88,8 +139,8 @@ const record: RunRecord = {
   verifyPass,
   clean: gateAPass && verifyPass,
 };
-index.push(record);
-writeFileSync(indexPath, JSON.stringify(index, null, 2));
+index[index.length - 1] = record;
+writeIndex(index);
 
 const cleanCount = index.filter((entry) => entry.clean).length;
 process.stdout.write(
