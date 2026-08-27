@@ -11,7 +11,7 @@
 //   3. The demo flow still completes: AskUQ answered, release approved,
 //      exactly one receipt in the vault.
 //
-// Usage: TRUEFORGE_BASE_URL=http://localhost:8891 reconnect-proof
+// Usage: TRUEFORGE_BASE_URL=http://localhost:8891 npm run reconnect-proof
 
 import { writeFileSync } from "node:fs";
 

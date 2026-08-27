@@ -240,11 +240,6 @@ describe("failure injection over the wire", () => {
     const store = createVaultStore();
     const live = await startVaultMcpServer(0, createVaultHandlers(db, store));
     const liveClient = new Client({ name: "malformed-test", version: "0.0.0" });
-    await liveClient.connect(
-      new StreamableHTTPClientTransport(
-        new URL(`http://localhost:${live.port}/mcp`),
-      ) as unknown as Transport,
-    );
     // The SDK may surface schema rejection as a JSON-RPC error (throw) or an
     // isError result depending on version — either way the call must fail.
     const failedClosed = (name: string, args: Record<string, unknown>) =>
@@ -252,7 +247,14 @@ describe("failure injection over the wire", () => {
         (result) => result.isError === true,
         () => true,
       );
+    // connect inside the try: a connect failure must still tear down the
+    // server and database handle, or the suite hangs on the open socket.
     try {
+      await liveClient.connect(
+        new StreamableHTTPClientTransport(
+          new URL(`http://localhost:${live.port}/mcp`),
+        ) as unknown as Transport,
+      );
       const malformed: Array<[string, Record<string, unknown>]> = [
         ["prepare_analysis", { purpose: "p", audience: "a", dimensions: "week", metric: "m" }],
         ["prepare_analysis", { purpose: "p", audience: "a", dimensions: ["week"] }],
@@ -347,17 +349,17 @@ describe("end-to-end release flow over the wire", () => {
     const store = createVaultStore();
     const live = await startVaultMcpServer(0, createVaultHandlers(db, store));
     const liveClient = new Client({ name: "flow-test", version: "0.0.0" });
-    await liveClient.connect(
-      new StreamableHTTPClientTransport(
-        new URL(`http://localhost:${live.port}/mcp`),
-      ) as unknown as Transport,
-    );
     const call = async (name: string, args: Record<string, unknown>) => {
       const result = await liveClient.callTool({ name, arguments: args });
       const [first] = result.content as Array<{ text: string }>;
       return { isError: result.isError === true, body: JSON.parse(first?.text ?? "{}") };
     };
     try {
+      await liveClient.connect(
+        new StreamableHTTPClientTransport(
+          new URL(`http://localhost:${live.port}/mcp`),
+        ) as unknown as Transport,
+      );
       const denied = await call("prepare_analysis", {
         purpose: "export customer emails",
         audience: "support leadership",
