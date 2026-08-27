@@ -234,6 +234,113 @@ describe("vault MCP scaffold", () => {
   });
 });
 
+describe("failure injection over the wire", () => {
+  it("rejects malformed tool input before any handler runs: zero transitions", async () => {
+    const db = openVaultDatabase();
+    const store = createVaultStore();
+    const live = await startVaultMcpServer(0, createVaultHandlers(db, store));
+    const liveClient = new Client({ name: "malformed-test", version: "0.0.0" });
+    await liveClient.connect(
+      new StreamableHTTPClientTransport(
+        new URL(`http://localhost:${live.port}/mcp`),
+      ) as unknown as Transport,
+    );
+    // The SDK may surface schema rejection as a JSON-RPC error (throw) or an
+    // isError result depending on version — either way the call must fail.
+    const failedClosed = (name: string, args: Record<string, unknown>) =>
+      liveClient.callTool({ name, arguments: args }).then(
+        (result) => result.isError === true,
+        () => true,
+      );
+    try {
+      const malformed: Array<[string, Record<string, unknown>]> = [
+        ["prepare_analysis", { purpose: "p", audience: "a", dimensions: "week", metric: "m" }],
+        ["prepare_analysis", { purpose: "p", audience: "a", dimensions: ["week"] }],
+        ["validate_release", { queryId: 42 }],
+        ["render_safe_chart", {}],
+        [
+          "release_result",
+          {
+            queryId: "q-1",
+            purpose: "p",
+            audience: "a",
+            columns: [],
+            suppressedCells: -1,
+            contractHash: "x",
+            outputHash: "y",
+          },
+        ],
+        [
+          "release_result",
+          {
+            queryId: "q-1",
+            purpose: "p",
+            audience: "a",
+            columns: [],
+            suppressedCells: 2.5,
+            contractHash: "x",
+            outputHash: "y",
+          },
+        ],
+        [
+          "release_result",
+          { queryId: "q-1", purpose: "p", audience: "a", columns: [], suppressedCells: 0 },
+        ],
+      ];
+      for (const [name, args] of malformed) {
+        expect(await failedClosed(name, args), `${name} ${JSON.stringify(args)}`).toBe(true);
+      }
+      // Rejected at the schema, so no handler ran: no audit, no receipt.
+      expect(store.audits()).toHaveLength(0);
+      expect(store.receiptCount()).toBe(0);
+      // And the vault is unharmed: a well-formed call still succeeds.
+      const alive = await liveClient.callTool({ name: "describe_dataset", arguments: {} });
+      expect(alive.isError ?? false).toBe(false);
+    } finally {
+      await liveClient.close();
+      await live.close();
+      db.close();
+    }
+  });
+
+  it("survives a malformed body and a mid-request disconnect: zero transitions", async () => {
+    const db = openVaultDatabase();
+    const store = createVaultStore();
+    const live = await startVaultMcpServer(0, createVaultHandlers(db, store));
+    try {
+      const broken = await fetch(`http://localhost:${live.port}/mcp`, {
+        method: "POST",
+        headers: { "content-type": "application/json", accept: "application/json" },
+        body: "this is not json{",
+      });
+      expect(broken.status).toBeGreaterThanOrEqual(400);
+
+      // A caller that opens a release call and dies mid-body — the timeout
+      // shape a flaky network produces. The vault must neither apply it nor
+      // wedge on the dangling socket.
+      await new Promise<void>((resolve) => {
+        const socket = connect(live.port, "localhost", () => {
+          socket.write(
+            'POST /mcp HTTP/1.1\r\nHost: localhost\r\ncontent-type: application/json\r\ncontent-length: 500\r\n\r\n{"jsonrpc":"2.0","method":"tools/call","params":{"name":"release_result"',
+          );
+          setTimeout(() => {
+            socket.destroy();
+            resolve();
+          }, 50);
+        });
+      });
+
+      expect(store.audits()).toHaveLength(0);
+      expect(store.receiptCount()).toBe(0);
+      const alive = await fetch(`http://localhost:${live.port}/tickets`);
+      expect(alive.status).toBe(404);
+    } finally {
+      await live.close();
+      db.close();
+    }
+  });
+});
+
 describe("end-to-end release flow over the wire", () => {
   it("prepares, validates, releases exactly once, and charts — no raw value ever crosses", async () => {
     const db = openVaultDatabase();
