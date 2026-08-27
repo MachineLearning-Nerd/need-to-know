@@ -32,6 +32,51 @@ gate run artifacts rather than in a committed record. The published clean-run
 records planned for Phase 9 will durably record deny-path session and turn IDs
 alongside verifier output.
 
+## Subagents are disabled, deliberately
+
+The original design called for advisory subagents (planner, privacy
+reviewer, evidence reviewer). TrueForge 0.1.4 child agents inherit the
+root's full tool set — including the vault MCP tools — so a child could
+trigger `release_result`, and no narrowed-permission claim would be true.
+Rather than prompt-shaping children and sampling their behaviour over
+repeated runs, this deployment removes the surface: the manifest disables
+`dynamic_sub_agents`, the prompt forbids creating them, and the verifier
+independently rejects any release chain whose calls, approval gate, or user
+decision sit outside the root thread (`approval_source_mismatch`). The
+root-only guarantee is therefore enforced deterministically on every
+verified bundle instead of demonstrated statistically.
+
+## OpenUI relay provenance is detected after the run
+
+The vault deterministically authors clearance, denial, receipt, and chart
+OpenUI blocks. On the successful release path, Gate A refetches persisted
+events, binds the clearance, receipt, and chart blocks to their root Vault MCP
+responses, and fails if the assistant changed one or emitted an extra OpenUI
+fence. Denial blocks are covered by deterministic handler and renderer tests;
+the live off-mission Stop path intentionally calls no Vault tool. This is
+post-run evidence, not a pre-render control: the pinned standalone TrueForge
+0.1.4 UI exposes no manifest or API hook that can inspect assistant output
+before its Markdown renderer displays an OpenUI fence.
+
+Preventing an altered assistant block from entering the DOM requires the later
+custom UI to suppress assistant-authored OpenUI and render only validated,
+correlated Vault tool responses. Until then, native approval and tool-response
+surfaces remain the runtime evidence; Gate A detects but cannot undo a rendered
+mismatch.
+
+## Gate assertions are tuned to the pinned model
+
+Several live-gate checks encode exact behaviour of the pinned model
+(zai/glm-5.2 at temperature 0) rather than general properties: the Stop path
+requires an exact terminal confirmation with no interim prose and no persisted
+reasoning text, and the receipt block must appear in the same message as the
+chart call. These passed live and fail loudly on drift, but a model or runtime
+change (for example, one that persists reasoning content) will fail the gates
+for behaving differently, not for leaking. Likewise, the verifier compares
+vault-authored cards byte-for-byte, so any future wording change to the card
+renderer invalidates bundles produced before it. Both are deliberate
+strictness under a pinned build, not general-purpose checks.
+
 ## Offline verification is weaker than live
 
 `verify-receipt` without `TRUEFORGE_BASE_URL` checks the bundle's embedded

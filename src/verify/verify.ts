@@ -7,6 +7,7 @@ import {
   type ReleaseCandidate,
   verifyRelease,
 } from "../contract/validate.js";
+import { renderDecisionCard, renderReceiptCard } from "../render/cards.js";
 import { CANARY } from "../vault/seed.js";
 import { isSafeTrueForgeId } from "./events.js";
 import {
@@ -268,11 +269,25 @@ function checkEvents(
   }
   const suppressedCells = prepareResponse.body.suppressedCells as number;
   if (
-    !hasExactKeys(validateResponse.body, ["queryId", "status", "contractHash", "outputHash"]) ||
+    !hasExactKeys(validateResponse.body, [
+      "queryId",
+      "status",
+      "contractHash",
+      "outputHash",
+      "findingCodes",
+      "openui",
+    ]) ||
     validateResponse.body.queryId !== receipt.queryId ||
     validateResponse.body.status !== "approved" ||
     validateResponse.body.contractHash !== receipt.contractHash ||
-    validateResponse.body.outputHash !== receipt.outputHash
+    validateResponse.body.outputHash !== receipt.outputHash ||
+    validateResponse.body.findingCodes !== "" ||
+    validateResponse.body.openui !==
+      renderDecisionCard(receipt.queryId, suppressedCells, {
+        status: "approved",
+        contractHash: receipt.contractHash,
+        outputHash: receipt.outputHash,
+      })
   ) {
     return { outcome: "approval_source_mismatch", detail: "validate_release response mismatch" };
   }
@@ -399,13 +414,14 @@ function checkEvents(
       const witnessedReceipt = body === null ? null : snapshotRecord(body.receipt);
       return (
         body !== null &&
-        Object.keys(body).length === 3 &&
-        ["receipt", "columns", "rows"].every((key) => Object.hasOwn(body, key)) &&
+        Object.keys(body).length === 4 &&
+        ["receipt", "columns", "rows", "openui"].every((key) => Object.hasOwn(body, key)) &&
         witnessedReceipt !== null &&
         Object.keys(witnessedReceipt).length === RECEIPT_KEYS.length &&
         RECEIPT_KEYS.every((key) => witnessedReceipt[key] === receipt[key]) &&
         canonicalize(body.columns) === canonicalize(expectedOutput.columns) &&
-        canonicalize(body.rows) === canonicalize(expectedOutput.rows)
+        canonicalize(body.rows) === canonicalize(expectedOutput.rows) &&
+        body.openui === renderReceiptCard(receipt)
       );
     } catch {
       return false;

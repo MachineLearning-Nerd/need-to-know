@@ -40,9 +40,13 @@ export function jsonResult(value: unknown): ToolResult {
   return { content: [{ type: "text", text: JSON.stringify(value) }] };
 }
 
-export function errorResult(code: string, detail?: string): ToolResult {
+export function errorResult(
+  code: string,
+  detail?: string,
+  extra?: Record<string, unknown>,
+): ToolResult {
   return {
-    content: [{ type: "text", text: JSON.stringify({ error: code, detail }) }],
+    content: [{ type: "text", text: JSON.stringify({ error: code, detail, ...extra }) }],
     isError: true,
   };
 }

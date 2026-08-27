@@ -44,32 +44,30 @@ describe("ROOT_AGENT_PROMPT", () => {
     expect(ROOT_AGENT_PROMPT).toContain("ask_user_question");
   });
 
+  it("routes exception requests through AskUQ before any vault tool", () => {
+    expect(ROOT_AGENT_PROMPT).toContain("requests an exception");
+    expect(ROOT_AGENT_PROMPT).toContain("your FIRST action MUST be ask_user_question");
+    expect(ROOT_AGENT_PROMPT).toContain("including describe_dataset");
+    expect(ROOT_AGENT_PROMPT).toContain("Stop (Recommended)");
+  });
+
   it("instructs emitting openui blocks", () => {
     expect(ROOT_AGENT_PROMPT).toContain("openui");
   });
 });
 
 describe("production OpenUI templates", () => {
-  const blocks = [...ROOT_AGENT_PROMPT.matchAll(/```openui\n([\s\S]*?)\n```/g)].map(
-    (match) => match[1] ?? "",
-  );
-
-  it("defines a pinned-runtime root in every card", () => {
-    expect(blocks).toHaveLength(3);
-    for (const block of blocks) expect(block).toContain("root = Stack(");
+  it("contains no model-filled card templates or placeholders", () => {
+    expect(ROOT_AGENT_PROMPT).not.toContain("```openui");
+    expect(ROOT_AGENT_PROMPT).not.toMatch(/\{[A-Za-z]+\}/);
   });
 
-  it("uses only components present in the pinned OpenUI instructions", () => {
-    expect(ROOT_AGENT_PROMPT).not.toContain("KeyValue(");
-    expect(ROOT_AGENT_PROMPT).toContain("TextContent(");
-    expect(ROOT_AGENT_PROMPT).toContain('Callout("success",');
-    expect(ROOT_AGENT_PROMPT).toContain('Callout("error",');
-  });
-
-  it("keeps denial text to deterministic finding codes", () => {
-    expect(ROOT_AGENT_PROMPT).toContain("finding.code values only");
-    expect(ROOT_AGENT_PROMPT).not.toContain("{detail}");
-    expect(ROOT_AGENT_PROMPT).not.toContain("{rows}");
+  it("instructs pasting every vault-authored block verbatim", () => {
+    expect(ROOT_AGENT_PROMPT).toContain("VERBATIM");
+    expect(ROOT_AGENT_PROMPT).toContain("validate_release response contains a complete");
+    expect(ROOT_AGENT_PROMPT).toContain("release_result response contains a complete");
+    expect(ROOT_AGENT_PROMPT).toContain("render_safe_chart");
+    expect(ROOT_AGENT_PROMPT).toContain("Never author, edit, or re-assemble");
   });
 });
 

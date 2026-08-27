@@ -53,6 +53,7 @@ export type VaultStore = {
   audits(): readonly AuditRecord[];
   saveReceipt(receipt: Omit<ReleaseReceipt, "receiptId">): ReleaseReceipt;
   getReceipt(queryId: string): ReleaseReceipt | undefined;
+  receiptCount(): number;
 };
 
 const MAX_PREPARED_ENTRIES = 500;
@@ -135,5 +136,6 @@ export function createVaultStore(): VaultStore {
       return entry;
     },
     getReceipt: (queryId) => receipts.get(queryId),
+    receiptCount: () => receipts.size,
   };
 }

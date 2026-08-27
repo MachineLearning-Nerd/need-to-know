@@ -8,6 +8,8 @@ import {
 import { ALLOWED_METRICS } from "../contract/queryPlan.js";
 import { GROUP_SIZE_FIELD, MAX_RELEASE_ROWS, MIN_GROUP_SIZE } from "../contract/rows.js";
 import { validateRelease, verifyRelease } from "../contract/validate.js";
+import { renderDecisionCard, renderReceiptCard } from "../render/cards.js";
+import { renderChartBlock } from "../render/chart.js";
 import type { AggregateMetric, VaultDatabase } from "../vault/database.js";
 import { COLUMN_SENSITIVITY, DATASET_VERSION, SAFE_DIMENSIONS } from "../vault/schema.js";
 import { errorResult, jsonResult, type ReleaseResultInput, type VaultToolHandlers } from "./mcp.js";
@@ -148,6 +150,7 @@ function releaseResultInner(db: VaultDatabase, store: VaultStore, input: Release
     receipt,
     columns: entry.candidate.columns,
     rows: projectReleasedRows(entry.candidate),
+    openui: renderReceiptCard(receipt),
   });
 }
 
@@ -184,7 +187,11 @@ export function createVaultHandlers(db: VaultDatabase, store: VaultStore): Vault
         // The most significant enforcement event the vault sees: someone asked
         // it for something outside the authorized mission.
         store.recordAudit("-", "mission_not_authorized");
-        return errorResult("mission_not_authorized", mission.reasons.join(","));
+        const findings = mission.reasons.map((code) => ({ code }));
+        return errorResult("mission_not_authorized", undefined, {
+          findingCodes: mission.reasons.join(", "),
+          openui: renderDecisionCard("-", 0, { status: "denied", findings }),
+        });
       }
       const dimensions = input.dimensions;
       // Allowlists first, structural checks after: reversed, one padding
@@ -250,7 +257,15 @@ export function createVaultHandlers(db: VaultDatabase, store: VaultStore): Vault
       // validated and hashed is exactly what prepare_analysis produced.
       const entry = store.getPrepared(input.queryId);
       if (entry === undefined) return errorResult("unknown_query_id");
-      return jsonResult({ queryId: entry.queryId, ...validateRelease(entry.candidate) });
+      const verdict = validateRelease(entry.candidate);
+      const findingCodes =
+        verdict.status === "approved" ? "" : verdict.findings.map(({ code }) => code).join(", ");
+      return jsonResult({
+        queryId: entry.queryId,
+        ...verdict,
+        findingCodes,
+        openui: renderDecisionCard(entry.queryId, entry.suppressedCells, verdict),
+      });
     },
     releaseResult: (input) => {
       // The transport already converts a throw into a generic error; this
@@ -274,6 +289,7 @@ export function createVaultHandlers(db: VaultDatabase, store: VaultStore): Vault
         return errorResult("not_released");
       }
       const { candidate } = entry;
+      const rows = projectReleasedRows(candidate);
       return jsonResult({
         queryId: entry.queryId,
         receiptId: receipt.receiptId,
@@ -281,7 +297,17 @@ export function createVaultHandlers(db: VaultDatabase, store: VaultStore): Vault
         dimensions: candidate.queryPlan.dimensions,
         metric: candidate.queryPlan.metric,
         columns: candidate.columns,
-        rows: projectReleasedRows(candidate),
+        rows,
+        // Vault-authored card: the complete OpenUI block, rendered
+        // deterministically from the released aggregate. The agent pastes it
+        // verbatim; Gate A detects any later model-authored mismatch.
+        openui: renderChartBlock({
+          receiptId: receipt.receiptId,
+          dimensions: candidate.queryPlan.dimensions,
+          metric: candidate.queryPlan.metric,
+          rows,
+          suppressedCells: entry.suppressedCells,
+        }),
       });
     },
   };

@@ -46,6 +46,8 @@ function buildValidReceipt() {
     status: string;
     contractHash: string;
     outputHash: string;
+    findingCodes: string;
+    openui: string;
   };
   if (valBody.status !== "approved") throw new Error("expected approved in test setup");
 
@@ -70,6 +72,7 @@ function buildValidReceipt() {
     };
     columns: string[];
     rows: Array<Record<string, string | number>>;
+    openui: string;
   };
 
   const releaseTuple = {
@@ -662,6 +665,29 @@ describe("verify-receipt: session-bound evidence", () => {
       );
       expect(verifyReceipt({ ...verifiable, events }).outcome).toBe("receipt_unwitnessed");
     }
+  });
+
+  it("rejects altered vault-authored decision and receipt cards", () => {
+    const { verifiable } = buildValidReceipt();
+    const alteredDecision = structuredClone(verifiable.events).map((event) => {
+      if (event.type !== TF_EVENT_TOOL_RESPONSE || event.tool_call_id !== "tc-validate")
+        return event;
+      const body = JSON.parse(event.content) as { openui: string };
+      return { ...event, content: JSON.stringify({ ...body, openui: `${body.openui} stale` }) };
+    });
+    expect(verifyReceipt({ ...verifiable, events: alteredDecision }).outcome).toBe(
+      "approval_source_mismatch",
+    );
+
+    const alteredReceipt = structuredClone(verifiable.events).map((event) => {
+      if (event.type !== TF_EVENT_TOOL_RESPONSE || event.tool_call_id !== "tc-release")
+        return event;
+      const body = JSON.parse(event.content) as { openui: string };
+      return { ...event, content: JSON.stringify({ ...body, openui: `${body.openui} stale` }) };
+    });
+    expect(verifyReceipt({ ...verifiable, events: alteredReceipt }).outcome).toBe(
+      "receipt_unwitnessed",
+    );
   });
 
   it("rejects approval evidence that does not resolve to release_result", () => {
