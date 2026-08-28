@@ -105,7 +105,8 @@ export function extractEvidence(messages: readonly ThreadMessageLike[]): Clearan
           evidence.queryId = body.queryId;
           if (typeof candidate?.purpose === "string") evidence.purpose = candidate.purpose;
           if (typeof candidate?.audience === "string") evidence.audience = candidate.audience;
-          evidence.columns = strings(candidate?.columns);
+          const columns = strings(candidate?.columns);
+          if (columns !== undefined) evidence.columns = columns;
           if (typeof body.suppressedCells === "number") {
             evidence.suppressedCells = body.suppressedCells;
           }
