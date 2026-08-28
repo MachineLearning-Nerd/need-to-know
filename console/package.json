@@ -1,0 +1,33 @@
+{
+  "name": "need-to-know-console",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@assistant-ui/core": "0.2.22",
+    "@assistant-ui/react": "0.14.27",
+    "@truefoundry/trueforge-ui": "0.2.4",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "zustand": "5.0.14"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
+    "@vitejs/plugin-react": "6.1.0",
+    "typescript": "7.0.2",
+    "vite": "8.2.2"
+  },
+  "overrides": {
+    "@assistant-ui/core": "0.2.22",
+    "@assistant-ui/react": "0.14.27",
+    "@assistant-ui/store": "0.2.21",
+    "@assistant-ui/tap": "0.9.5",
+    "zustand": "5.0.14"
+  }
+}

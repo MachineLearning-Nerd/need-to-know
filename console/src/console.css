@@ -1,0 +1,227 @@
+/* Savile Row surfaces for the console's own components. The SDK's atoms are
+   themed through semantic tokens in theme.ts; these classes only style the
+   layout shell, evidence rail, and override framing. */
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+.ck-shell {
+  display: flex;
+  height: 100%;
+  min-width: 0;
+  background: oklch(0.16 0.01 265);
+  color: oklch(0.93 0.008 90);
+}
+
+.ck-sessions {
+  display: flex;
+  flex-direction: column;
+  width: 264px;
+  min-width: 0;
+  flex-shrink: 0;
+  border-right: 1px solid oklch(0.32 0.02 265);
+  background: oklch(0.19 0.012 265);
+}
+
+.ck-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid oklch(0.32 0.02 265);
+}
+
+.ck-brand-logo {
+  width: 26px;
+  height: 26px;
+}
+
+.ck-brand-name {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.ck-brand-sub {
+  font-size: 11px;
+  color: oklch(0.68 0.015 265);
+}
+
+.ck-thread {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- Evidence rail ---- */
+
+.ck-rail {
+  width: 300px;
+  min-width: 0;
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-left: 1px solid oklch(0.32 0.02 265);
+  background: oklch(0.19 0.012 265);
+  padding: 16px 16px 24px;
+  font-size: 12.5px;
+}
+
+.ck-rail-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: oklch(0.68 0.015 265);
+  margin-bottom: 10px;
+}
+
+.ck-rail-stage {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin-bottom: 14px;
+}
+
+.ck-tone-released {
+  background: oklch(0.42 0.09 155);
+  color: oklch(0.93 0.05 155);
+}
+
+.ck-tone-cleared {
+  background: oklch(0.5 0.1 85);
+  color: oklch(0.96 0.05 85);
+}
+
+.ck-tone-prepared {
+  background: oklch(0.32 0.05 265);
+  color: oklch(0.92 0.02 265);
+}
+
+.ck-tone-denied {
+  background: oklch(0.42 0.13 25);
+  color: oklch(0.93 0.04 25);
+}
+
+.ck-tone-idle {
+  background: oklch(0.26 0.015 265);
+  color: oklch(0.68 0.015 265);
+}
+
+.ck-rail-section {
+  margin: 14px 0 6px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: oklch(0.55 0.03 85);
+}
+
+.ck-rail-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 3px 0;
+  min-width: 0;
+}
+
+.ck-rail-label {
+  color: oklch(0.68 0.015 265);
+  flex-shrink: 0;
+}
+
+.ck-rail-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+
+.ck-mono {
+  font-family: "SF Mono", ui-monospace, Menlo, monospace;
+  font-size: 11px;
+}
+
+.ck-rail-footnote {
+  margin-top: 18px;
+  padding-top: 12px;
+  border-top: 1px solid oklch(0.32 0.02 265);
+  font-size: 11px;
+  line-height: 1.5;
+  color: oklch(0.6 0.015 265);
+}
+
+/* ---- Approval hero ---- */
+
+.ck-approval-tuple {
+  border: 1px solid oklch(0.45 0.08 85);
+  border-radius: 10px;
+  background: oklch(0.21 0.02 85 / 0.35);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.ck-approval-heading {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: oklch(0.78 0.1 85);
+  margin-bottom: 8px;
+}
+
+.ck-approval-note {
+  font-size: 12px;
+  color: oklch(0.68 0.015 265);
+}
+
+.ck-tuple-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2.5px 0;
+  font-size: 12.5px;
+  min-width: 0;
+}
+
+.ck-tuple-label {
+  color: oklch(0.68 0.015 265);
+  flex-shrink: 0;
+}
+
+.ck-tuple-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* ---- AskUQ + subagent framing ---- */
+
+.ck-askuq-heading {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: oklch(0.55 0.03 85);
+  margin-bottom: 6px;
+}
+
+.ck-subagent-warning {
+  border: 1px solid oklch(0.5 0.13 25);
+  border-radius: 8px;
+  background: oklch(0.3 0.08 25 / 0.35);
+  color: oklch(0.9 0.05 25);
+  font-size: 12px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+}
