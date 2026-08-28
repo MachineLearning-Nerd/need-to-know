@@ -89,17 +89,17 @@ export function extractEvidence(messages: readonly ThreadMessageLike[]): Clearan
       if (call.type !== "tool-call" || typeof call.toolName !== "string") continue;
       const body = decodeToolResult(call.result);
       if (body === null) continue;
-      if (
-        call.toolName === "describe_dataset" ||
-        call.toolName === "prepare_analysis" ||
-        call.toolName === "validate_release" ||
-        call.toolName === "release_result" ||
-        call.toolName === "render_safe_chart"
-      ) {
+      if (call.toolName === "describe_dataset" || call.toolName === "render_safe_chart") {
         recordDenial(body, evidence);
       }
 
       if (call.toolName === "prepare_analysis") {
+        // A preparation — success or denial — starts the latest workflow.
+        // Nothing from an earlier query may survive it: a stale receipt would
+        // mask a new denial, and a new query would inherit RELEASED state.
+        for (const key of Object.keys(evidence) as Array<keyof ClearanceEvidence>) {
+          delete evidence[key];
+        }
         if (typeof body.queryId === "string") {
           const candidate = record(body.candidate);
           evidence.queryId = body.queryId;
@@ -109,28 +109,43 @@ export function extractEvidence(messages: readonly ThreadMessageLike[]): Clearan
           if (typeof body.suppressedCells === "number") {
             evidence.suppressedCells = body.suppressedCells;
           }
+        } else {
+          recordDenial(body, evidence);
         }
       }
+      // Validation, release, and chart evidence binds to the current query:
+      // a response carrying a different queryId belongs to an earlier
+      // preparation and must not be attributed to this one.
       if (call.toolName === "validate_release") {
-        if (typeof body.status === "string") evidence.verdict = body.status;
-        if (typeof body.contractHash === "string") evidence.contractHash = body.contractHash;
-        if (typeof body.outputHash === "string") evidence.outputHash = body.outputHash;
-        if (typeof body.findingCodes === "string") evidence.findingCodes = body.findingCodes;
+        if (typeof body.queryId !== "string" || body.queryId === evidence.queryId) {
+          recordDenial(body, evidence);
+          if (typeof body.status === "string") evidence.verdict = body.status;
+          if (typeof body.contractHash === "string") evidence.contractHash = body.contractHash;
+          if (typeof body.outputHash === "string") evidence.outputHash = body.outputHash;
+          if (typeof body.findingCodes === "string") evidence.findingCodes = body.findingCodes;
+        }
       }
       if (call.toolName === "release_result") {
         const receipt = record(body.receipt);
         if (typeof receipt?.receiptId === "string") {
-          evidence.receiptId = receipt.receiptId;
-          if (typeof receipt.datasetVersion === "string") {
-            evidence.datasetVersion = receipt.datasetVersion;
+          if (receipt.queryId === evidence.queryId) {
+            evidence.receiptId = receipt.receiptId;
+            if (typeof receipt.datasetVersion === "string") {
+              evidence.datasetVersion = receipt.datasetVersion;
+            }
+            if (typeof receipt.policyVersion === "string") {
+              evidence.policyVersion = receipt.policyVersion;
+            }
           }
-          if (typeof receipt.policyVersion === "string") {
-            evidence.policyVersion = receipt.policyVersion;
-          }
+        } else {
+          recordDenial(body, evidence);
         }
-        if (typeof body.status === "string") evidence.verdict = body.status;
       }
-      if (call.toolName === "render_safe_chart" && typeof body.openui === "string") {
+      if (
+        call.toolName === "render_safe_chart" &&
+        typeof body.openui === "string" &&
+        body.queryId === evidence.queryId
+      ) {
         evidence.chartRendered = true;
       }
     }
