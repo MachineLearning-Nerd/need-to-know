@@ -1,8 +1,8 @@
 # Known limitations
 
-Honest boundaries of what the evidence chain proves. The Phase 9 threat-model
-pass expands this document; these entries are recorded now because they were
-identified during the Phase 4/5 completeness review.
+Honest boundaries of what the evidence chain proves. The companion
+[THREAT_MODEL.md](THREAT_MODEL.md) states what the system defends and what it
+deliberately does not claim; this document records the known gaps.
 
 ## Approval is evidenced structurally, not identity-bound
 
