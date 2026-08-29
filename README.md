@@ -17,6 +17,34 @@ A data steward asks the agent for numbers from a support-ticket database that co
 
 The interesting failure is the point: ask it to export customer emails and it must offer the exact Stop choice before any Vault call, then persist the exact refusal with zero release side effects. Unauthorized calls that do reach deterministic Vault handlers are denied and audited separately.
 
+## Judge in 60 seconds (no server, no model key)
+
+Requires only Node.js ≥ 24:
+
+```bash
+npm install
+npm test                                                # 358 tests
+npm run verify-receipt -- evidence/attempt-9-bundle.json
+# verify-receipt: PASS receipt=r-4ed4eb7a-... query=q-7ca61fb7-...
+cd evidence && shasum -a 256 -c SHA256SUMS && cd ..
+```
+
+That verifies one of the five published clean-run bundles offline — hashes
+recomputed, approval-before-release ordering checked, vault-authored cards
+compared byte-for-byte (offline mode is deliberately weaker than live; the
+bundle carries its own events — see [evidence/](evidence/)). The honest
+denominator: 13 scripted demo attempts, 12 clean, 1 disclosed failure, final
+5 consecutive clean on the integrated build ([docs/RUNS.md](docs/RUNS.md)).
+
+Running it live? After the setup below, paste this mission into a session
+with the `need-to-know` agent:
+
+> For purpose weekly support trend, prepare the support ticket-count trend
+> by week and region and release it.
+
+The turn pauses on Ask User Questions for the missing audience, then pauses
+again on native approval showing the exact release tuple and both hashes.
+
 ## Getting started
 
 Requires Node.js ≥ 24.
@@ -80,7 +108,11 @@ TRUEFORGE_BASE_URL=http://localhost:8891 npm run clean-run
 TRUEFORGE_BASE_URL=http://localhost:8891 npm run reconnect-proof
 ```
 
-Recorded clean-run results, with session/turn IDs and verifier output, are published in [docs/RUNS.md](docs/RUNS.md).
+Recorded clean-run results, with session/turn IDs and verifier output, are published in [docs/RUNS.md](docs/RUNS.md). The complete evidence bundles for the five consecutive clean integrated runs are committed under [evidence/](evidence/) with sha256 checksums — each verifies offline from a clean clone with no model key:
+
+```bash
+npm run verify-receipt -- evidence/attempt-9-bundle.json
+```
 
 ### Verifying a release receipt
 
@@ -103,6 +135,40 @@ What the system defends, against whom, and what it deliberately does not claim
 is in [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md). What the evidence chain
 does and does not prove is recorded honestly in
 [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
+
+## Qodo Code Review Evidence
+
+Every one of the eleven merged pull requests went through automated review
+(Qodo on all; GitHub Copilot where triggered). All review threads across
+those PRs are resolved; the examples below are concrete fixes, not a claim
+that review counts establish code quality.
+
+Representative findings and what happened to them:
+
+- **Offline verification silently reported as clean**
+  ([PR #8](https://github.com/MachineLearning-Nerd/need-to-know/pull/8)):
+  Qodo caught that the clean-run harness did not force `TRUEFORGE_BASE_URL`
+  into the verifier child, so `verify-receipt` ran in offline mode while the
+  attempt was banked as clean. Fixed by resolving the base URL once and
+  injecting it into both children; the already-banked bundles were
+  re-verified live and the disclosure is recorded in
+  [docs/RUNS.md](docs/RUNS.md).
+- **A prior release survived a new mission in the console evidence rail**
+  ([PR #9](https://github.com/MachineLearning-Nerd/need-to-know/pull/9)):
+  a fresh `prepare_analysis` did not reset stale receipt state, so an old
+  receipt could be displayed against a new query. Fixed with a full evidence
+  reset on every preparation plus queryId binding on every later stage, and
+  covered by parser tests in the root suite.
+- **A negated sentence satisfied the digest-statement gate**
+  ([PR #11](https://github.com/MachineLearning-Nerd/need-to-know/pull/11)):
+  the sandbox proof accepted any assistant message containing the digest,
+  including "does not equal <hash>". Fixed by requiring the affirmation to
+  open the message and rejecting negation/hedge words — after first checking
+  the tightened form against all five banked run bundles so the gate stayed
+  honest to the pinned model's actual output.
+
+Review conversations are public on each PR. This section reports process
+facts; the quality claims live in the tests, gates, and published evidence.
 
 ## AI-assisted development disclosure
 
