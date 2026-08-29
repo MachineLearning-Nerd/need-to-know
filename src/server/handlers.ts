@@ -298,6 +298,13 @@ export function createVaultHandlers(db: VaultDatabase, store: VaultStore): Vault
         metric: candidate.queryPlan.metric,
         columns: candidate.columns,
         rows,
+        // Post-release sandbox check material: the exact canonical bytes
+        // behind receipt.outputHash, base64-encoded so the agent can pipe
+        // them into the sandbox hash recomputation without shell quoting.
+        // Only rows already released above are encoded — nothing new leaves.
+        sandboxProof: {
+          canonicalPayloadBase64: Buffer.from(canonicalize(rows), "utf8").toString("base64"),
+        },
         // Vault-authored card: the complete OpenUI block, rendered
         // deterministically from the released aggregate. The agent pastes it
         // verbatim; Gate A detects any later model-authored mismatch.

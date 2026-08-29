@@ -75,9 +75,11 @@ async function checkSessionAgent(
 
 // The security-relevant manifest fields are checked exactly — the pinned
 // instructions, the model, no seeded messages, the single gated vault MCP
-// server, subagents and sandbox disabled. Server-added defaults (tool lists,
-// context management, download flags) are deliberately ignored: a runtime
-// default change must not false-fail every bundle.
+// server, subagents disabled, and sandbox enabled (its use is pinned to the
+// single post-release hash step by the instructions equality below).
+// Server-added defaults (tool lists, context management, download flags) are
+// deliberately ignored: a runtime default change must not false-fail every
+// bundle.
 function hasExpectedAgentManifest(value: unknown): boolean {
   const manifest = snapshotRecord(value);
   if (manifest === null) return false;
@@ -100,7 +102,7 @@ function hasExpectedAgentManifest(value: unknown): boolean {
   const config = snapshotRecord(manifest.config);
   const subAgents = config === null ? null : snapshotRecord(config.dynamic_sub_agents);
   const sandbox = config === null ? null : snapshotRecord(config.sandbox);
-  return subAgents?.enabled === false && sandbox?.enabled === false;
+  return subAgents?.enabled === false && sandbox?.enabled === true;
 }
 
 export async function loadLiveSessionEvidence(

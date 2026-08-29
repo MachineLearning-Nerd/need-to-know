@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { describe, expect, it } from "vitest";
 import { CANCEL_OPTION, STOP_OPTIONS, STOP_QUESTION } from "../src/agent/prompt.js";
 import { ALLOWED_AUDIENCE, ALLOWED_PURPOSE } from "../src/contract/policy.js";
@@ -12,6 +14,8 @@ import {
   gateABoundaryFailures,
   openUiBlocksRelayedVerbatim,
   pendingSessionInput,
+  sandboxActivityFailures,
+  sandboxHashProofFailures,
 } from "./gate-a-actions.js";
 
 describe("askUqPrecedesApproval", () => {
@@ -976,5 +980,254 @@ describe("pendingSessionInput", () => {
         [],
       ),
     ).toEqual(["allow: raw synthetic value found in assistant content"]);
+  });
+});
+
+describe("sandbox hash proof", () => {
+  const payload = '[{"ticket_count":12,"week":"2026-W30"}]';
+  const b64 = Buffer.from(payload, "utf8").toString("base64");
+  const digest = createHash("sha256").update(payload, "utf8").digest("hex");
+  const command = `printf '%s' '${b64}' | base64 --decode | sha256sum`;
+
+  const releaseResponse = {
+    type: "tool.response",
+    thread_id: "main",
+    tool_call_id: "release-1",
+    content: JSON.stringify({ receipt: { outputHash: digest } }),
+  };
+  const chartResponse = {
+    type: "tool.response",
+    thread_id: "main",
+    tool_call_id: "chart-1",
+    content: JSON.stringify({ sandboxProof: { canonicalPayloadBase64: b64 } }),
+  };
+  const sandboxCreated = { type: "sandbox.created", thread_id: null };
+  const execCall = {
+    type: "model.message",
+    thread_id: "main",
+    tool_calls: [
+      {
+        id: "exec-1",
+        function: { name: "exec", arguments: JSON.stringify({ command, intent: "verify hash" }) },
+        tool_info: { type: "truefoundry-system", name: "exec" },
+      },
+    ],
+  };
+  const execResponse = {
+    type: "tool.response",
+    thread_id: "main",
+    tool_call_id: "exec-1",
+    content: JSON.stringify({
+      success: true,
+      response: { exitCode: 0, result: `${digest}  -\n` },
+    }),
+  };
+  const statement = {
+    type: "model.message",
+    thread_id: "main",
+    content: `The sandbox-computed sha256 digest ${digest} equals the receipt outputHash.`,
+  };
+  const happy = [releaseResponse, chartResponse, execCall, sandboxCreated, execResponse, statement];
+
+  it("passes the complete post-release proof chain", () => {
+    expect(sandboxHashProofFailures(happy)).toEqual([]);
+  });
+
+  it("fails when the exec command is not the exact pinned pipeline", () => {
+    const drifted = {
+      ...execCall,
+      tool_calls: [
+        {
+          ...execCall.tool_calls[0],
+          function: { name: "exec", arguments: JSON.stringify({ command: `${command} 2>&1` }) },
+        },
+      ],
+    };
+    expect(
+      sandboxHashProofFailures([
+        releaseResponse,
+        chartResponse,
+        drifted,
+        sandboxCreated,
+        execResponse,
+        statement,
+      ]),
+    ).toContain("sandbox exec command is not the exact pinned hash pipeline");
+  });
+
+  it("fails when the proof bytes do not hash to the receipt outputHash", () => {
+    const tampered = {
+      ...chartResponse,
+      content: JSON.stringify({
+        sandboxProof: {
+          canonicalPayloadBase64: Buffer.from('[{"ticket_count":13}]', "utf8").toString("base64"),
+        },
+      }),
+    };
+    expect(
+      sandboxHashProofFailures([
+        releaseResponse,
+        tampered,
+        execCall,
+        sandboxCreated,
+        execResponse,
+        statement,
+      ]),
+    ).toContain("sha256 of the decoded canonical payload does not equal receipt outputHash");
+  });
+
+  it("fails when the exec ran before the chart delivered the proof bytes", () => {
+    expect(
+      sandboxHashProofFailures([
+        releaseResponse,
+        execCall,
+        sandboxCreated,
+        execResponse,
+        chartResponse,
+        statement,
+      ]),
+    ).toContain("sandbox exec ran before the chart response delivered the proof bytes");
+    expect(
+      sandboxHashProofFailures([
+        releaseResponse,
+        chartResponse,
+        execCall,
+        execResponse,
+        sandboxCreated,
+        statement,
+      ]),
+    ).toContain("sandbox.created event is not between the exec call and response");
+  });
+
+  it("fails on a non-zero exit code", () => {
+    const failed = {
+      ...execResponse,
+      content: JSON.stringify({ success: true, response: { exitCode: 1, result: digest } }),
+    };
+    expect(
+      sandboxHashProofFailures([
+        releaseResponse,
+        chartResponse,
+        execCall,
+        sandboxCreated,
+        failed,
+        statement,
+      ]),
+    ).toContain("no persisted sandbox exec response witnesses the digest with exit code 0");
+    const embeddedDigest = {
+      ...execResponse,
+      content: JSON.stringify({
+        success: true,
+        response: { exitCode: 0, result: `expected digest: ${digest}` },
+      }),
+    };
+    expect(
+      sandboxHashProofFailures([
+        releaseResponse,
+        chartResponse,
+        execCall,
+        sandboxCreated,
+        embeddedDigest,
+        statement,
+      ]),
+    ).toContain("no persisted sandbox exec response witnesses the digest with exit code 0");
+  });
+
+  it("fails when the model never states the digest afterwards", () => {
+    expect(
+      sandboxHashProofFailures([
+        releaseResponse,
+        chartResponse,
+        execCall,
+        sandboxCreated,
+        execResponse,
+      ]),
+    ).toContain("no assistant message after the exec affirms the digest equality");
+  });
+
+  it("accepts the pinned affirmation with the model's variable trailing clause", () => {
+    const observedVariants = [
+      `The sandbox-computed sha256 digest ${digest} equals the receipt outputHash, confirming the released payload is unchanged.`,
+      `The sandbox-computed sha256 digest \`${digest}\` equals the receipt outputHash, confirming the released payload is byte-identical to the approved contract output.`,
+      `The sandbox-computed sha256 digest ${digest} equals the receipt outputHash.\n\nRelease complete: 8 released cells, 14 cells suppressed (k >= 3).`,
+    ];
+    for (const content of observedVariants) {
+      expect(
+        sandboxHashProofFailures([
+          releaseResponse,
+          chartResponse,
+          execCall,
+          sandboxCreated,
+          execResponse,
+          { type: "model.message", thread_id: "main", content },
+        ]),
+      ).toEqual([]);
+    }
+  });
+
+  it("rejects negated, ambiguous, and unrelated digest statements", () => {
+    const invalidStatements = [
+      `The sandbox digest ${digest} does not equal the receipt outputHash.`,
+      `I cannot confirm the sandbox-computed sha256 digest ${digest} equals the receipt outputHash.`,
+      `The sandbox-computed sha256 digest ${digest} possibly equals the receipt outputHash.`,
+      `The receipt outputHash equals ${digest}, but this says nothing about the sandbox result.`,
+      `This assertion is false. The sandbox-computed sha256 digest ${digest} equals the receipt outputHash.`,
+    ];
+    for (const content of invalidStatements) {
+      expect(
+        sandboxHashProofFailures([
+          releaseResponse,
+          chartResponse,
+          execCall,
+          sandboxCreated,
+          execResponse,
+          { type: "model.message", thread_id: "main", content },
+        ]),
+      ).toContain("no assistant message after the exec affirms the digest equality");
+    }
+    expect(
+      sandboxHashProofFailures([
+        ...happy,
+        { type: "model.message", thread_id: "main", content: "Additional commentary." },
+      ]),
+    ).toContain("no assistant message after the exec affirms the digest equality");
+  });
+
+  it("requires exactly one exec call", () => {
+    expect(
+      sandboxHashProofFailures([
+        releaseResponse,
+        chartResponse,
+        execCall,
+        sandboxCreated,
+        execResponse,
+        execCall,
+        statement,
+      ]),
+    ).toContain("expected exactly one sandbox exec call, saw 2");
+  });
+});
+
+describe("sandboxActivityFailures", () => {
+  it("reports nothing for a sandbox-free session", () => {
+    expect(sandboxActivityFailures([{ type: "model.message", content: "denied" }])).toEqual([]);
+  });
+
+  it("reports exec calls and sandbox.created events in non-release sessions", () => {
+    const failures = sandboxActivityFailures([
+      { type: "sandbox.created" },
+      {
+        type: "model.message",
+        tool_calls: [
+          {
+            id: "exec-9",
+            function: { name: "exec", arguments: "{}" },
+            tool_info: { type: "truefoundry-system", name: "exec" },
+          },
+        ],
+      },
+    ]);
+    expect(failures).toContain("unexpected sandbox exec call (1)");
+    expect(failures).toContain("unexpected sandbox.created event (1)");
   });
 });

@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
+
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { Sha256Hex } from "../contract/canonical.js";
+import { canonicalize, type Sha256Hex } from "../contract/canonical.js";
 import { validateRelease } from "../contract/validate.js";
 import { openVaultDatabase, type VaultDatabase } from "../vault/database.js";
 import { CANARY, SMALL_CELL } from "../vault/seed.js";
@@ -801,5 +803,24 @@ describe("render_safe_chart", () => {
       `${suppressedCells} finest-granularity aggregate cells suppressed inside the vault (k >= 3)`,
     );
     expect(chart.openui).not.toContain(`${suppressedCells} of `);
+  });
+
+  it("carries sandbox proof bytes whose sha256 equals the receipt outputHash", () => {
+    const input = prepareValidated();
+    const { queryId } = input;
+    const released = payload(handlers.releaseResult(input)) as unknown as {
+      receipt: { outputHash: string };
+      rows: Array<Record<string, unknown>>;
+    };
+    const chart = payload(handlers.renderSafeChart({ queryId })) as unknown as {
+      rows: Array<Record<string, unknown>>;
+      sandboxProof: { canonicalPayloadBase64: string };
+    };
+    const decoded = Buffer.from(chart.sandboxProof.canonicalPayloadBase64, "base64");
+    // The encoded bytes are exactly the canonical form of the already-released
+    // rows — the outputHash preimage — and nothing else.
+    expect(decoded.toString("utf8")).toBe(canonicalize(chart.rows));
+    expect(chart.rows).toEqual(released.rows);
+    expect(createHash("sha256").update(decoded).digest("hex")).toBe(released.receipt.outputHash);
   });
 });

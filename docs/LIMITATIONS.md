@@ -45,16 +45,27 @@ decision sit outside the root thread (`approval_source_mismatch`). The
 root-only guarantee is therefore enforced deterministically on every
 verified bundle instead of demonstrated statistically.
 
-## No sandbox is used or claimed
+## Passing runs use the sandbox post-release only; isolation is not the claim
 
-The pinned runtime's standalone local sandbox works — a gate proving one
-real sandbox exec inside a live turn, with a marker string round-tripping
-through persisted events, passed before the build window and re-passed
-in-window on 2026-08-27. The deployment still excludes it deliberately:
-the chart is produced by a deterministic renderer inside the vault, so no
-code-execution surface exists on the release path, and no
-isolated-execution claim is made. The passing gate is retained as evidence
-that the seam exists, not as part of the product.
+The passing flow uses the sandbox for exactly one step, after a receipt exists:
+recomputing the released payload's sha256 from the canonical bytes the chart
+response carries, and comparing it to the receipt's outputHash. Gate A accepts
+a run only when that use follows release and every session that never releases
+has zero sandbox activity. Pre-release use is prompt-forbidden and detected on
+persisted events afterward, not runtime-blocked. The chart itself remains a
+deterministic in-vault renderer, with no required code execution on the
+pre-release path.
+
+Two honest boundaries. First, the standalone build's local sandbox executes
+on the host — it is the platform's seam, not a hardened isolation boundary,
+so the check's value is the independently witnessed recomputation, not
+isolation strength. The prompt's phrase "in isolation" means this calculation
+is separate from the Vault release handler; it does not claim process or host
+isolation. Second, the model relays the canonical bytes from the chart response
+into the exec command, so a model that mangles them fails the gate
+(exact-command check) rather than producing a false PASS — the gate recomputes
+the digest from the persisted command bytes itself and does not rely on sandbox
+stdout alone.
 
 ## OpenUI relay provenance is detected after the run
 
