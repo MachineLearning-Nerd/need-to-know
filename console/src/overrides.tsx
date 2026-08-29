@@ -107,8 +107,10 @@ function partAwaitsApproval(part: PendingApprovalPart): boolean {
 // card, and the pending release_result approval all live inside that trail,
 // so collapsing it hides the deliverable — and, during the pause, the
 // Allow/Deny bar. The console owns the state instead: open by default,
-// never auto-collapsed, manual toggle respected, and an undecided release
-// approval re-opens the card so the decision is never hidden.
+// never auto-collapsed, and the arrival of an undecided release approval
+// re-opens the card — the system never hides the decision on its own. An
+// explicit header toggle by the human still wins, including during the
+// pause; they chose to collapse it and can re-open it the same way.
 export function ClearanceAgentSteps(props: AgentStepsCardProps) {
   const awaitingApproval = useAuiState((state) =>
     (state.message.parts as readonly PendingApprovalPart[]).some(partAwaitsApproval),
