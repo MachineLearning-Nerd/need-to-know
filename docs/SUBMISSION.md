@@ -24,27 +24,28 @@ and honest about its edges.
   The approval reference is structural, not cryptographic; the execution-time
   revalidation is what binds the human's decision to the exact artifact.
 - **Persisted-event verification** (`verify-receipt`) refuses to trust a bare
-  receipt: it recomputes hashes, checks the frozen inline agent spec, and
-  walks the root-thread prepare → validate → approval → release trail on the
-  server's stored events.
-- **The sandbox** runs exactly one post-release step — recomputing the
-  released payload's sha256 from the canonical bytes the vault supplies —
-  and Gate A independently recomputes that digest from the persisted command
-  bytes, so neither the model's prose nor the sandbox's stdout is taken on
-  faith.
+  receipt: offline mode recomputes hashes and walks the root-thread prepare →
+  validate → approval → release trail in the embedded events. Live mode also
+  checks the frozen inline agent spec's security-relevant fields and refetches
+  the server's stored turns and events.
+- **In a passing run, the sandbox** runs exactly one post-release step —
+  recomputing the released payload's sha256 from the canonical bytes the
+  vault supplies — and Gate A independently recomputes that digest from the
+  persisted command bytes, so neither the model's prose nor the sandbox's
+  stdout is taken on faith.
 
 ## TrueForge feature coverage
 
 | Feature | How it is used | Evidence |
 | --- | --- | --- |
 | MCP server integration | Vault registered as the agent's only MCP server; five typed tools | `scripts/setup-trueforge.ts`, gate runs |
-| Native tool approval | `require_approval_for_tools: ["release_result"]`; turn pauses for the human on the real action | Every allow/deny session in [RUNS.md](RUNS.md) |
+| Native tool approval | `require_approval_for_tools: ["release_result"]`; turn pauses for the human on the real action | Gate A allow sessions in [RUNS.md](RUNS.md); denial sessions prove zero release |
 | Ask User Questions | Missing mission fields and exception requests pause with exact pinned options before any vault call | Gate A missing-purpose and exception paths |
 | Generative UI (OpenUI) | Vault-authored clearance/denial/receipt/chart cards relayed verbatim; byte-for-byte relay is gate-checked | Gate A relay assertion |
 | Sandbox | One pinned post-release hash recomputation over released canonical bytes | Gate A sandbox proof chain; attempts 9–13 |
 | Event persistence | The verifier and every gate assert on refetched persisted events, not the live stream | `src/verify/`, gates A–C |
 | SSE reconnect | Abort mid-turn, resume by sequence number, stitched stream equal to the persisted turn | `npm run reconnect-proof` |
-| Inline agent spec | Sessions snapshot the manifest; the verifier requires the frozen spec to match the pinned build exactly | `src/verify/live.ts` |
+| Inline agent spec | Sessions snapshot the manifest; live verification requires its security-relevant fields to match the pinned build | `src/verify/live.ts` |
 | Custom UI (`@truefoundry/trueforge-ui`) | Clearance Console: evidence rail from vault tool responses, approval bar showing the exact pending tuple and hashes | `console/` |
 | Dynamic subagents | Deliberately disabled — 0.1.4 children inherit vault tools, which would break root-only release; the verifier rejects non-root chains | [LIMITATIONS.md](LIMITATIONS.md) |
 

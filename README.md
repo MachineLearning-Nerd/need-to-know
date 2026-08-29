@@ -111,9 +111,9 @@ does and does not prove is recorded honestly in
 ## Qodo Code Review Evidence
 
 Every one of the eleven merged pull requests went through automated review
-(Qodo on all; GitHub Copilot where triggered), and every review thread was
-dispositioned — fixed with a linked commit, or declined in-thread with a
-concrete technical reason. All threads across all PRs are resolved.
+(Qodo on all; GitHub Copilot where triggered). All review threads across
+those PRs are resolved; the examples below are concrete fixes, not a claim
+that review counts establish code quality.
 
 Representative findings and what happened to them:
 
@@ -138,10 +138,6 @@ Representative findings and what happened to them:
   open the message and rejecting negation/hedge words — after first checking
   the tightened form against all five banked run bundles so the gate stayed
   honest to the pinned model's actual output.
-- Findings that did not apply were declined in-thread with technical
-  reasoning rather than silently dismissed — for example suggestions that
-  would have weakened an exact-match gate assertion into a looser check.
-
 Review conversations are public on each PR. This section reports process
 facts; the quality claims live in the tests, gates, and published evidence.
 

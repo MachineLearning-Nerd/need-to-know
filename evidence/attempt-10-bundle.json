@@ -10,11 +10,7 @@
   "candidate": {
     "purpose": "weekly support trend",
     "audience": "support leadership",
-    "columns": [
-      "week",
-      "region",
-      "ticket_count"
-    ],
+    "columns": ["week", "region", "ticket_count"],
     "rows": [
       {
         "week": "2026-W30",
@@ -70,10 +66,7 @@
     "policyVersion": "policy-v1",
     "queryPlan": {
       "sourceDataset": "support",
-      "dimensions": [
-        "week",
-        "region"
-      ],
+      "dimensions": ["week", "region"],
       "metric": "ticket_count",
       "filters": [],
       "joins": []
@@ -607,7 +600,7 @@
       "type": "sandbox.created",
       "id": "01m15vbg9pbsj9zspspd0zpjnq",
       "created_at": "2026-08-29T04:09:57.814Z",
-      "sandbox_id": "v1:local:/Users/dineshjinjala/Library/Application Support/trueforge/sandboxes/01m15v9mf547w4181pvwqfek8h/01m15vb91awzth99ngcefysy5m",
+      "sandbox_id": "v1:local:<redacted-host-path>/01m15v9mf547w4181pvwqfek8h/01m15vb91awzth99ngcefysy5m",
       "thread_id": null
     },
     {
