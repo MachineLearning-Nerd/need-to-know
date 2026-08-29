@@ -107,19 +107,3 @@ does and does not prove is recorded honestly in
 ## AI-assisted development disclosure
 
 This project is built with AI coding assistants (Claude Code and Codex as pair programmers, Qodo for pull-request review). Every change is human-reviewed before merge, and the team owns and can explain the architecture and all technical decisions. All data in this repository is synthetic; no real personal data is used anywhere.
-
-## Status
-
-Phase 9 of the build window complete. All components are wired and the hardening evidence is published:
-
-- **Phase 1** - Vault SQLite database: synthetic support-ticket data with canary row and small-cell case.
-- **Phase 2** - Deterministic ReleaseContract library: allowlists, group-size enforcement, canonical hashing.
-- **Phase 3** - Vault MCP server: five-tool boundary (describe, prepare, chart, validate, release). No raw-row tool.
-- **Phase 4** - TrueForge agent wiring: root prompt, Ask User Questions, pinned-valid OpenUI clearance/denial/receipt cards, and `require_approval_for_tools: ["release_result"]`.
-- **Phase 5** - Session-bound `verify-receipt` evidence: live token-paginated event fetch, exact approval/release witness checks, and canary/raw-boundary gates. Dedicated tests cover the full fail-closed enumeration: malformed receipts, missing/unavailable/partial events, events missing a string type, mismatched session/turn IDs, hash mismatches, approval-ordering violations, duplicate approval and decision events, and canary presence.
-- **Phase 6** - Agent UX evidence: Gate A verifies that the model relays the vault-authored clearance before approval, then the receipt and chart blocks verbatim, and detects mismatches after the run. Gate C verifies that off-mission Stop paths call no Vault tool, end in an explicit assistant refusal, produce zero releases, and leak no protected synthetic values. Vault-authored denial cards remain covered by handler and renderer tests. The pinned standalone UI has no pre-render provenance hook, so this is detection evidence, not runtime suppression of an altered model block.
-- **Phase 7** - Robustness evidence: a live reconnect proof (abort mid-turn, resume by sequence number, stitched stream equal to the persisted turn), failure injection over the wire (malformed inputs, non-JSON bodies, torn sockets — all fail closed with zero state transitions), and the `clean-run` harness that banks every attempt in an honest tally.
-- **Phase 8** - Clearance Console: a custom UI on `@truefoundry/trueforge-ui` with an evidence rail parsed from vault tool responses (mission, verdict, receipt, hashes), an approval bar that displays the exact pending release tuple and hashes from the paused tool call, and a subagent banner that states the deployment's root-only invariant. The evidence parser is covered by the root test suite.
-- **Phase 9** - Hardening and evidence publication: a scoped threat model, an honest record of all eight scripted attempts (7/8 clean, final five consecutive), and a complete setup and verification pass.
-
-Dynamic subagents are deliberately disabled in this pinned build: TrueForge 0.1.4 children inherit the root's Vault tools, so enabling them would violate the root-only `release_result` invariant.
