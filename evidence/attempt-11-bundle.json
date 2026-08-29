@@ -1,0 +1,683 @@
+{
+  "receipt": {
+    "receiptId": "r-2822d607-f0a6-47b2-b89b-430f68f7b66a",
+    "queryId": "q-7c6eaeba-ffee-49a0-bde7-9c7db5648d4e",
+    "contractHash": "eab0f0aa59a5de0d17b37a41516ce973b0a34b9b81265eeb83b324b06f173f80",
+    "outputHash": "15ee956f5b8ed695a01c8f0e74abb8c3552848f605f5697682c0043e1a8c3969",
+    "datasetVersion": "support-tickets-v1",
+    "policyVersion": "policy-v1"
+  },
+  "candidate": {
+    "purpose": "weekly support trend",
+    "audience": "support leadership",
+    "columns": [
+      "week",
+      "region",
+      "ticket_count"
+    ],
+    "rows": [
+      {
+        "week": "2026-W30",
+        "region": "EU",
+        "ticket_count": 5,
+        "group_size": 5
+      },
+      {
+        "week": "2026-W30",
+        "region": "NA",
+        "ticket_count": 3,
+        "group_size": 3
+      },
+      {
+        "week": "2026-W31",
+        "region": "EU",
+        "ticket_count": 3,
+        "group_size": 3
+      },
+      {
+        "week": "2026-W31",
+        "region": "NA",
+        "ticket_count": 10,
+        "group_size": 10
+      },
+      {
+        "week": "2026-W32",
+        "region": "EU",
+        "ticket_count": 7,
+        "group_size": 7
+      },
+      {
+        "week": "2026-W32",
+        "region": "NA",
+        "ticket_count": 3,
+        "group_size": 3
+      },
+      {
+        "week": "2026-W33",
+        "region": "EU",
+        "ticket_count": 5,
+        "group_size": 5
+      },
+      {
+        "week": "2026-W33",
+        "region": "NA",
+        "ticket_count": 3,
+        "group_size": 3
+      }
+    ],
+    "minGroupSize": 3,
+    "datasetVersion": "support-tickets-v1",
+    "policyVersion": "policy-v1",
+    "queryPlan": {
+      "sourceDataset": "support",
+      "dimensions": [
+        "week",
+        "region"
+      ],
+      "metric": "ticket_count",
+      "filters": [],
+      "joins": []
+    },
+    "provenance": {
+      "sourceDataset": "support",
+      "datasetVersion": "support-tickets-v1",
+      "queryId": "q-7c6eaeba-ffee-49a0-bde7-9c7db5648d4e"
+    }
+  },
+  "evidence": {
+    "sessionId": "01m15ver81mj2xhwasz8ex2zs9",
+    "agentType": "inline",
+    "turnIds": [
+      "01m15ver84yjz7b7ce0jnyf3k4.local",
+      "01m15vevxk3252qhgwtqbtdc9b.local",
+      "01m15vfnss4zpt9em3pfgyxhe9.local"
+    ]
+  },
+  "events": [
+    {
+      "type": "turn.created",
+      "id": "01m15ver8603epyh4ndmcqrvkw",
+      "turn_id": "01m15ver84yjz7b7ce0jnyf3k4.local",
+      "previous_turn_id": null,
+      "input": [
+        {
+          "type": "user.message",
+          "content": "For purpose weekly support trend, prepare the support ticket-count trend by week and region and release it."
+        }
+      ],
+      "state": {
+        "status": "running"
+      },
+      "created_at": "2026-08-29T04:11:44.261Z",
+      "thread_id": null
+    },
+    {
+      "type": "mcp.initialize",
+      "id": "01m15ver8erq6eqhs9dvyhsmwf",
+      "created_at": "2026-08-29T04:11:44.270Z",
+      "thread_id": "main",
+      "mcp_servers": [
+        {
+          "name": "vault",
+          "id": "vault",
+          "transport_type": "streamable-http"
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "call_a97af2c6204746ac839b44ff",
+          "type": "function",
+          "function": {
+            "name": "ask_user_question",
+            "arguments": "{\"question\":\"Which audience should this release be prepared for?\",\"options\":[\"support leadership (Recommended)\", \"Cancel — no release\"]}"
+          },
+          "tool_info": {
+            "type": "truefoundry-system",
+            "name": "ask_user_question"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m15ver8frzbg376fag3mvry3",
+      "created_at": "2026-08-29T04:11:48.011Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 4805,
+        "output_tokens": 205,
+        "cache_read_tokens": 4800,
+        "input_tokens_breakdown": {
+          "harness": 3147,
+          "skills": 0,
+          "instructions": 1435,
+          "tool_definitions": 528,
+          "messages": 0
+        }
+      }
+    },
+    {
+      "type": "tool.response_required",
+      "id": "01m15vevxdq5fhw69gpg5s9tvd",
+      "created_at": "2026-08-29T04:11:48.013Z",
+      "thread_id": "main",
+      "tool_calls": [
+        {
+          "id": "call_a97af2c6204746ac839b44ff",
+          "source_event_id": "01m15ver8frzbg376fag3mvry3"
+        }
+      ]
+    },
+    {
+      "type": "turn.done",
+      "id": "01m15vevxenq532zm279fsg8ek",
+      "created_at": "2026-08-29T04:11:48.014Z",
+      "state": {
+        "status": "done",
+        "output": null,
+        "required_actions": [
+          {
+            "type": "tool.response_required",
+            "id": "01m15vevxdq5fhw69gpg5s9tvd",
+            "created_at": "2026-08-29T04:11:48.013Z",
+            "thread_id": "main",
+            "tool_calls": [
+              {
+                "id": "call_a97af2c6204746ac839b44ff",
+                "source_event_id": "01m15ver8frzbg376fag3mvry3"
+              }
+            ]
+          }
+        ],
+        "completed_at": "2026-08-29T04:11:48.014Z",
+        "metrics": {
+          "total_input_tokens": 4805,
+          "total_output_tokens": 205,
+          "total_tokens": 5010,
+          "total_cache_read_tokens": 4800,
+          "total_reasoning_tokens": 167
+        }
+      },
+      "thread_id": null
+    },
+    {
+      "type": "turn.created",
+      "id": "01m15vevxr32twkt9s6qj5j1tv",
+      "turn_id": "01m15vevxk3252qhgwtqbtdc9b.local",
+      "previous_turn_id": "01m15ver84yjz7b7ce0jnyf3k4.local",
+      "input": [
+        {
+          "type": "user.tool_response",
+          "thread_id": "main",
+          "tool_call_id": "call_a97af2c6204746ac839b44ff",
+          "content": "support leadership (Recommended)"
+        }
+      ],
+      "state": {
+        "status": "running"
+      },
+      "created_at": "2026-08-29T04:11:48.022Z",
+      "thread_id": null
+    },
+    {
+      "type": "mcp.initialize",
+      "id": "01m15vevy4h12h3eeathwde3gh",
+      "created_at": "2026-08-29T04:11:48.036Z",
+      "thread_id": "main",
+      "mcp_servers": [
+        {
+          "name": "vault",
+          "id": "vault",
+          "transport_type": "streamable-http"
+        }
+      ]
+    },
+    {
+      "tool_calls": [
+        {
+          "id": "call_dbee61d8ca834be5b2ed2b7f",
+          "type": "function",
+          "function": {
+            "name": "describe_dataset",
+            "arguments": "{}"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "describe_dataset",
+            "server_id": "vault",
+            "server_name": "vault"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m15vevy4h12h3eeathwde3gj",
+      "created_at": "2026-08-29T04:11:52.337Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 5019,
+        "output_tokens": 157,
+        "cache_read_tokens": 4800,
+        "input_tokens_breakdown": {
+          "harness": 3147,
+          "skills": 0,
+          "instructions": 1435,
+          "tool_definitions": 528,
+          "messages": 0
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_dbee61d8ca834be5b2ed2b7f",
+      "content": "{\"datasetVersion\":\"support-tickets-v1\",\"policyVersion\":\"policy-v1\",\"mission\":{\"purpose\":\"weekly support trend\",\"audience\":\"support leadership\"},\"columns\":[{\"name\":\"customer_id\",\"sensitivity\":\"sensitive\"},{\"name\":\"email\",\"sensitivity\":\"sensitive\"},{\"name\":\"phone\",\"sensitivity\":\"sensitive\"},{\"name\":\"free_text\",\"sensitivity\":\"sensitive\"},{\"name\":\"week\",\"sensitivity\":\"safe_dimension\"},{\"name\":\"region\",\"sensitivity\":\"safe_dimension\"},{\"name\":\"category\",\"sensitivity\":\"safe_dimension\"},{\"name\":\"resolution_hours\",\"sensitivity\":\"metric_source\"}],\"safeDimensions\":[\"week\",\"region\",\"category\"],\"metrics\":[\"ticket_count\",\"avg_resolution_hours\"],\"rowCount\":62,\"minGroupSize\":3,\"maxReleaseRows\":50}",
+      "type": "tool.response",
+      "id": "01m15vf04vt4fgdzsgqsqj1t3d",
+      "created_at": "2026-08-29T04:11:52.347Z",
+      "thread_id": "main"
+    },
+    {
+      "content": "Schema confirmed: `week` and `region` are safe dimensions, and `ticket_count` is an allowed metric. Preparing the aggregate inside the vault.",
+      "tool_calls": [
+        {
+          "id": "call_e623a76544a94d22942ead2d",
+          "type": "function",
+          "function": {
+            "name": "prepare_analysis",
+            "arguments": "{\"audience\":\"support leadership\",\"dimensions\":[\"week\", \"region\"],\"metric\":\"ticket_count\",\"purpose\":\"weekly support trend\"}"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "prepare_analysis",
+            "server_id": "vault",
+            "server_name": "vault"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m15vf04y0e63s55j1b9b8vq1",
+      "created_at": "2026-08-29T04:11:58.585Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 5331,
+        "output_tokens": 141,
+        "cache_read_tokens": 4992,
+        "input_tokens_breakdown": {
+          "harness": 3147,
+          "skills": 0,
+          "instructions": 1435,
+          "tool_definitions": 528,
+          "messages": 221
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_e623a76544a94d22942ead2d",
+      "content": "{\"queryId\":\"q-7c6eaeba-ffee-49a0-bde7-9c7db5648d4e\",\"candidate\":{\"purpose\":\"weekly support trend\",\"audience\":\"support leadership\",\"columns\":[\"week\",\"region\",\"ticket_count\"],\"rows\":[{\"week\":\"2026-W30\",\"region\":\"EU\",\"ticket_count\":5,\"group_size\":5},{\"week\":\"2026-W30\",\"region\":\"NA\",\"ticket_count\":3,\"group_size\":3},{\"week\":\"2026-W31\",\"region\":\"EU\",\"ticket_count\":3,\"group_size\":3},{\"week\":\"2026-W31\",\"region\":\"NA\",\"ticket_count\":10,\"group_size\":10},{\"week\":\"2026-W32\",\"region\":\"EU\",\"ticket_count\":7,\"group_size\":7},{\"week\":\"2026-W32\",\"region\":\"NA\",\"ticket_count\":3,\"group_size\":3},{\"week\":\"2026-W33\",\"region\":\"EU\",\"ticket_count\":5,\"group_size\":5},{\"week\":\"2026-W33\",\"region\":\"NA\",\"ticket_count\":3,\"group_size\":3}],\"minGroupSize\":3,\"datasetVersion\":\"support-tickets-v1\",\"policyVersion\":\"policy-v1\",\"queryPlan\":{\"sourceDataset\":\"support\",\"dimensions\":[\"week\",\"region\"],\"metric\":\"ticket_count\",\"filters\":[],\"joins\":[]},\"provenance\":{\"sourceDataset\":\"support\",\"datasetVersion\":\"support-tickets-v1\",\"queryId\":\"q-7c6eaeba-ffee-49a0-bde7-9c7db5648d4e\"}},\"suppressedCells\":14}",
+      "type": "tool.response",
+      "id": "01m15vf685a0ct18h422bh09mx",
+      "created_at": "2026-08-29T04:11:58.597Z",
+      "thread_id": "main"
+    },
+    {
+      "content": "Candidate aggregate prepared (8 released cells, 14 suppressed). Validating against the release contract.",
+      "tool_calls": [
+        {
+          "id": "call_ff60e26d8e0241e0a0fca367",
+          "type": "function",
+          "function": {
+            "name": "validate_release",
+            "arguments": "{\"queryId\":\"q-7c6eaeba-ffee-49a0-bde7-9c7db5648d4e\"}"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "validate_release",
+            "server_id": "vault",
+            "server_name": "vault"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m15vf6872ph7y6qthk37e8bq",
+      "created_at": "2026-08-29T04:12:00.961Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 5807,
+        "output_tokens": 101,
+        "cache_read_tokens": 5312,
+        "input_tokens_breakdown": {
+          "harness": 3147,
+          "skills": 0,
+          "instructions": 1435,
+          "tool_definitions": 528,
+          "messages": 697
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_ff60e26d8e0241e0a0fca367",
+      "content": "{\"queryId\":\"q-7c6eaeba-ffee-49a0-bde7-9c7db5648d4e\",\"status\":\"approved\",\"contractHash\":\"eab0f0aa59a5de0d17b37a41516ce973b0a34b9b81265eeb83b324b06f173f80\",\"outputHash\":\"15ee956f5b8ed695a01c8f0e74abb8c3552848f605f5697682c0043e1a8c3969\",\"findingCodes\":\"\",\"openui\":\"```openui\\nroot = Stack([card])\\ncard = Card([header, callout, purpose, audience, query, contract, output, suppressed], \\\"card\\\", \\\"column\\\", \\\"s\\\")\\nheader = CardHeader(\\\"Release Clearance\\\", \\\"approved\\\")\\ncallout = Callout(\\\"success\\\", \\\"Ready for human approval\\\", \\\"Authorized mission: weekly support trend → support leadership\\\")\\npurpose = TextContent(\\\"Purpose: weekly support trend\\\", \\\"small\\\")\\naudience = TextContent(\\\"Audience: support leadership\\\", \\\"small\\\")\\nquery = TextContent(\\\"Query ID: q-7c6eaeba-ffee-49a0-bde7-9c7db5648d4e\\\", \\\"small\\\")\\ncontract = TextContent(\\\"Contract hash: eab0f0aa59a5de0d17b37a41516ce973b0a34b9b81265eeb83b324b06f173f80\\\", \\\"small\\\")\\noutput = TextContent(\\\"Output hash: 15ee956f5b8ed695a01c8f0e74abb8c3552848f605f5697682c0043e1a8c3969\\\", \\\"small\\\")\\nsuppressed = TextContent(\\\"Suppressed cells: 14\\\", \\\"small\\\")\\n```\"}",
+      "type": "tool.response",
+      "id": "01m15vf8jb0azamfz2ykzt76h2",
+      "created_at": "2026-08-29T04:12:00.971Z",
+      "thread_id": "main"
+    },
+    {
+      "content": "Validation approved. Loading the OpenUI capability before relaying the vault's clearance card.",
+      "tool_calls": [
+        {
+          "id": "call_59435bfb5c914e569e091a6f",
+          "type": "function",
+          "function": {
+            "name": "get_openui_instructions",
+            "arguments": "{}"
+          },
+          "tool_info": {
+            "type": "truefoundry-system",
+            "name": "get_openui_instructions"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m15vf8jc9ffwcdsrpdn3fevz",
+      "created_at": "2026-08-29T04:12:03.671Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 6355,
+        "output_tokens": 53,
+        "cache_read_tokens": 5760,
+        "input_tokens_breakdown": {
+          "harness": 3147,
+          "skills": 0,
+          "instructions": 1435,
+          "tool_definitions": 528,
+          "messages": 1245
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_59435bfb5c914e569e091a6f",
+      "content": "<openui>\n<openui-markdown-fencing>\nAll openui, code must be fenced within openui block.\n```openui\ncode\n```\n</openui-markdown-fencing>\n\n<openui-syntax-rules>\n1. Each statement is on its own line: `identifier = Expression`\n2. `root` is the entry point — every program must define `root = Stack(...)`\n3. Expressions are: strings (\"...\"), numbers, booleans (true/false), null, arrays ([...]), objects ({...}), or component calls TypeName(arg1, arg2, ...)\n4. Use references for readability: define `name = ...` on one line, then use `name` later\n5. EVERY variable (except root) MUST be referenced by at least one other variable. Unreferenced variables are silently dropped and will NOT render. Always include defined variables in their parent's children/items array.\n6. Arguments are POSITIONAL (order matters, not names). Write `Stack([children], \"row\", \"l\")` NOT `Stack([children], direction: \"row\", gap: \"l\")` — colon syntax is NOT supported and silently breaks\n7. Optional arguments can be omitted from the end\n- Strings use double quotes with backslash escaping\n</openui-syntax-rules>\n\n<openui-component-signatures>\nArguments marked with ? are optional. Sub-components can be inline or referenced; prefer references for better streaming.\nProps typed `ActionExpression` accept an Action([@steps...]) expression. See the Action section for available steps (@ToAssistant, @OpenUrl).\nProps marked `$binding<type>` accept a `$variable` reference for two-way binding.\n\nLayout:\nStack([children], direction?: \"row\" | \"column\", gap?: \"none\" | \"xs\" | \"s\" | \"m\" | \"l\" | \"xl\" | \"2xl\", align?: \"start\" | \"center\" | \"end\" | \"stretch\" | \"baseline\", justify?: \"start\" | \"center\" | \"end\" | \"between\" | \"around\" | \"evenly\", wrap?: boolean) — Flex container. direction: \"row\"|\"column\" (default \"column\"). gap: \"none\"|\"xs\"|\"s\"|\"m\"|\"l\"|\"xl\"|\"2xl\" (default \"m\"). align: \"start\"|\"center\"|\"end\"|\"stretch\"|\"baseline\". justify: \"start\"|\"center\"|\"end\"|\"between\"|\"around\"|\"evenly\".\nTabs(items: TabItem[]) — Tabbed container\nTabItem(value: string, trigger: string, content: (TextContent | MarkDownRenderer | CardHeader | Callout | TextCallout | CodeBlock | Image | ImageBlock | ImageGallery | Separator | HorizontalBarChart | RadarChart | PieChart | RadialChart | SingleStackedBarChart | ScatterChart | AreaChart | BarChart | LineChart | Table | TagBlock | Form | Buttons | Steps)[]) — value is unique id, trigger is tab label, content is array of components\nAccordion(items: AccordionItem[]) — Collapsible sections\nAccordionItem(value: string, trigger: string, content: (TextContent | MarkDownRenderer | CardHeader | Callout | TextCallout | CodeBlock | Image | ImageBlock | ImageGallery | Separator | HorizontalBarChart | RadarChart | PieChart | RadialChart | SingleStackedBarChart | ScatterChart | AreaChart | BarChart | LineChart | Table | TagBlock | Form | Buttons | Steps)[]) — value is unique id, trigger is section title\nSteps(items: StepsItem[]) — Step-by-step guide\nStepsItem(title: string, details: string) — title and details text for one step\nCarousel(children: (TextContent | MarkDownRenderer | CardHeader | Callout | TextCallout | CodeBlock | Image | ImageBlock | ImageGallery | Separator | HorizontalBarChart | RadarChart | PieChart | RadialChart | SingleStackedBarChart | ScatterChart | AreaChart | BarChart | LineChart | Table | TagBlock | Form | Buttons | Steps)[][], variant?: \"card\" | \"sunk\") — Horizontal scrollable carousel\nSeparator(orientation?: \"horizontal\" | \"vertical\", decorative?: boolean) — Visual divider between content sections\nModal(title: string, open?: $binding<boolean>, children: (TextContent | MarkDownRenderer | CardHeader | Callout | TextCallout | CodeBlock | Image | ImageBlock | ImageGallery | Separator | HorizontalBarChart | RadarChart | PieChart | RadialChart | SingleStackedBarChart | ScatterChart | AreaChart | BarChart | LineChart | Table | TagBlock | Form | Buttons | Steps)[], size?: \"sm\" | \"md\" | \"lg\") — Modal dialog. open is a reactive $boolean binding — set to true to open, X/Escape/backdrop auto-closes. Put Form with buttons inside children.\n- For grid-like layouts, use Stack with direction \"row\" and wrap set to true.\n- Prefer justify \"start\" (or omit justify) with wrap=true for stable columns instead of uneven gutters.\n- Use nested Stacks when you need explicit rows/sections.\n- Show/hide sections: $editId != \"\" ? Card([editForm]) : null\n- Modal: Modal(\"Title\", $showModal, [content]) — $showModal is boolean, X/Escape auto-closes. Put Form with its own buttons inside children.\n- Use Tabs for alternative views (chart types, data sections) — no $variable needed\n- Shared filter across Tabs: same $days binding in Query args works across all TabItems\n\nContent:\nCard(children: (TextContent | MarkDownRenderer | CardHeader | Callout | TextCallout | CodeBlock | Image | ImageBlock | ImageGallery | Separator | HorizontalBarChart | RadarChart | PieChart | RadialChart | SingleStackedBarChart | ScatterChart | AreaChart | BarChart | LineChart | Table | TagBlock | Form | Buttons | Steps | Tabs | Carousel | Stack)[], variant?: \"card\" | \"sunk\" | \"clear\", direction?: \"row\" | \"column\", gap?: \"none\" | \"xs\" | \"s\" | \"m\" | \"l\" | \"xl\" | \"2xl\", align?: \"start\" | \"center\" | \"end\" | \"stretch\" | \"baseline\", justify?: \"start\" | \"center\" | \"end\" | \"between\" | \"around\" | \"evenly\", wrap?: boolean) — Styled container. variant: \"card\" (default, elevated) | \"sunk\" (recessed) | \"clear\" (transparent). Always full width. Accepts all Stack flex params (default: direction \"column\"). Cards flex to share space in row/wrap layouts.\nCardHeader(title?: string, subtitle?: string) — Header with optional title and subtitle\nTextContent(text: string, size?: \"small\" | \"default\" | \"large\" | \"small-heavy\" | \"large-heavy\") — Text block. Supports markdown. Optional size: \"small\" | \"default\" | \"large\" | \"small-heavy\" | \"large-heavy\".\nMarkDownRenderer(textMarkdown: string, variant?: \"clear\" | \"card\" | \"sunk\") — Renders markdown text with optional container variant\nCallout(variant: \"info\" | \"warning\" | \"error\" | \"success\" | \"neutral\", title: string, description: string, visible?: $binding<boolean>) — Callout banner. Optional visible is a reactive $boolean — auto-dismisses after 3s by setting $visible to false.\nTextCallout(variant?: \"neutral\" | \"info\" | \"warning\" | \"success\" | \"danger\", title?: string, description?: string) — Text callout with variant, title, and description\nImage(alt: string, src?: string) — Image with alt text and optional URL\nImageBlock(src: string, alt?: string) — Image block with loading state\nImageGallery(images: {src: string, alt?: string, details?: string}[]) — Gallery grid of images with modal preview\nCodeBlock(language: string, codeString: string) — Syntax-highlighted code block\n- Use Cards to group related KPIs or sections. Stack with direction \"row\" for side-by-side layouts.\n- Success toast: Callout(\"success\", \"Saved\", \"Done.\", $showSuccess) — use @Set($showSuccess, true) in save action, auto-dismisses after 3s. For errors: result.status == \"error\" ? Callout(\"error\", \"Failed\", result.error) : null\n- KPI card: Card([TextContent(\"Label\", \"small\"), TextContent(\"\" + @Count(@Filter(data.rows, \"field\", \"==\", \"value\")), \"large-heavy\")])\n\nTables:\nTable(columns: Col[]) — Data table — column-oriented. Each Col holds its own data array.\nCol(label: string, data, type?: \"string\" | \"number\" | \"action\") — Column definition — holds label + data array\n- Table is COLUMN-oriented: Table([Col(\"Label\", dataArray), Col(\"Count\", countArray, \"number\")]). Use array pluck for data: data.rows.fieldName\n- Col data can be component arrays for styled cells: Col(\"Status\", @Each(data.rows, \"item\", Tag(item.status, null, \"sm\", item.status == \"open\" ? \"success\" : \"danger\")))\n- Row actions: Col(\"Actions\", @Each(data.rows, \"t\", Button(\"Edit\", Action([@Set($showEdit, true), @Set($editId, t.id)]))))\n- Sortable: sorted = @Sort(data.rows, $sortField, \"desc\"). Bind $sortField to Select. Use sorted.fieldName for Col data\n- Searchable: filtered = @Filter(data.rows, \"title\", \"contains\", $search). Bind $search to Input\n- Chain sort + filter: filtered = @Filter(...) then sorted = @Sort(filtered, ...) — use sorted for both Table and Charts\n- Empty state: @Count(data.rows) > 0 ? Table([...]) : TextContent(\"No data yet\")\n\nCharts (2D):\nBarChart(labels: string[], series: Series[], variant?: \"grouped\" | \"stacked\", xLabel?: string, yLabel?: string) — Vertical bars; use for comparing values across categories with one or more series\nLineChart(labels: string[], series: Series[], variant?: \"linear\" | \"natural\" | \"step\", xLabel?: string, yLabel?: string) — Lines over categories; use for trends and continuous data over time\nAreaChart(labels: string[], series: Series[], variant?: \"linear\" | \"natural\" | \"step\", xLabel?: string, yLabel?: string) — Filled area under lines; use for cumulative totals or volume trends over time\nRadarChart(labels: string[], series: Series[]) — Spider/web chart; use for comparing multiple variables across one or more entities\nHorizontalBarChart(labels: string[], series: Series[], variant?: \"grouped\" | \"stacked\", xLabel?: string, yLabel?: string) — Horizontal bars; prefer when category labels are long or for ranked lists\nSeries(category: string, values: number[]) — One data series\n- Charts accept column arrays: LineChart(labels, [Series(\"Name\", values)]). Use array pluck: LineChart(data.rows.day, [Series(\"Views\", data.rows.views)])\n- Use Cards to wrap charts with CardHeader for titled sections\n- Chart + Table from same source: use @Sort or @Filter result for both LineChart and Table Col data\n- Multiple chart views: use Tabs — Tabs([TabItem(\"line\", \"Line\", [LineChart(...)]), TabItem(\"bar\", \"Bar\", [BarChart(...)])])\n\nCharts (1D):\nPieChart(labels: string[], values: number[], variant?: \"pie\" | \"donut\") — Circular slices; use plucked arrays: PieChart(data.categories, data.values)\nRadialChart(labels: string[], values: number[]) — Radial bars; use plucked arrays: RadialChart(data.categories, data.values)\nSingleStackedBarChart(labels: string[], values: number[]) — Single horizontal stacked bar; use plucked arrays: SingleStackedBarChart(data.categories, data.values)\nSlice(category: string, value: number) — One slice with label and numeric value\n- PieChart and BarChart need NUMBERS, not objects. For list data, use @Count(@Filter(...)) to aggregate:\n- PieChart from list: `PieChart([\"Low\", \"Med\", \"High\"], [@Count(@Filter(data.rows, \"priority\", \"==\", \"low\")), @Count(@Filter(data.rows, \"priority\", \"==\", \"medium\")), @Count(@Filter(data.rows, \"priority\", \"==\", \"high\"))], \"donut\")`\n- KPI from count: `TextContent(\"\" + @Count(@Filter(data.rows, \"status\", \"==\", \"open\")), \"large-heavy\")`\n\nCharts (Scatter):\nScatterChart(datasets: ScatterSeries[], xLabel?: string, yLabel?: string) — X/Y scatter plot; use for correlations, distributions, and clustering\nScatterSeries(name: string, points: Point[]) — Named dataset\nPoint(x: number, y: number, z?: number) — Data point with numeric coordinates\n\nData Display:\nTagBlock(tags: string[]) — tags is an array of strings\nTag(text: string, icon?: string, size?: \"sm\" | \"md\" | \"lg\", variant?: \"neutral\" | \"info\" | \"success\" | \"warning\" | \"danger\") — Styled tag/badge with optional icon and variant\n- Color-mapped Tag: Tag(value, null, \"sm\", value == \"high\" ? \"danger\" : value == \"medium\" ? \"warning\" : \"neutral\")\n</openui-component-signatures>\n\n<openui-builtin-functions>\nData functions prefixed with `@` to distinguish from components. These are the ONLY functions available — do NOT invent new ones.\nUse @-prefixed built-in functions (@Count, @Sum, @Avg, @Min, @Max, @Round) on Query results — do NOT hardcode computed values.\n\n@Count(array) → number — Returns array length\n@First(array) → element — Returns first element of array\n@Last(array) → element — Returns last element of array\n@Sum(numbers[]) → number — Sum of numeric array\n@Avg(numbers[]) → number — Average of numeric array\n@Min(numbers[]) → number — Minimum value in array\n@Max(numbers[]) → number — Maximum value in array\n@Sort(array, field, direction?) → sorted array — Sort array by field. Direction: \"asc\" (default) or \"desc\"\n@Filter(array, field, operator: \"==\" | \"!=\" | \">\" | \"<\" | \">=\" | \"<=\" | \"contains\", value) → filtered array — Filter array by field value\n@Round(number, decimals?) → number — Round to N decimal places (default 0)\n@Abs(number) → number — Absolute value\n@Floor(number) → number — Round down to nearest integer\n@Ceil(number) → number — Round up to nearest integer\n@Each(array, varName, template) — Evaluate template for each element. varName is the loop variable — use it ONLY inside the template expression (inline). Do NOT create a separate statement for the template.\n\nBuiltins compose — output of one is input to the next:\n`@Count(@Filter(data.rows, \"field\", \"==\", \"val\"))` for KPIs/chart values, `@Round(@Avg(data.rows.score), 1)`, `@Each(data.rows, \"item\", Comp(item.field))` for per-item rendering.\nArray pluck: `data.rows.field` extracts a field from every row → use with @Sum, @Avg, charts, tables.\n\nIMPORTANT @Each rule: The loop variable (e.g. \"item\") is ONLY available inside the @Each template expression. Always inline the template — do NOT extract it to a separate statement.\nCORRECT: `Col(\"Actions\", @Each(rows, \"t\", Button(\"Edit\", Action([@Set($id, t.id)]))))`\nWRONG: `myBtn = Button(\"Edit\", Action([@Set($id, t.id)]))` then `Col(\"Actions\", @Each(rows, \"t\", myBtn))` — t is undefined in myBtn.\n</openui-builtin-functions>\n\n<openui-hoisting-and-streaming>\nopenui-lang supports hoisting: a reference can be used BEFORE it is defined. The parser resolves all references after the full input is parsed.\n\nDuring streaming, the output is re-parsed on every chunk. Undefined references are temporarily unresolved and appear once their definitions stream in. This creates a progressive top-down reveal — structure first, then data fills in.\n\nRecommended statement order for optimal streaming:\n1. `root = Stack(...)` — UI shell appears immediately\n2. $variable declarations — state ready for bindings\n3. Query statements — defaults resolve immediately so components render with data\n4. Component definitions — fill in with data already available\n5. Data values — leaf content last\n\nAlways write the root = Stack(...) statement first so the UI shell appears immediately, even before child data has streamed in.\n</openui-hoisting-and-streaming>\n\n<openui-examples>\nExample 1 — Table (column-oriented):\n\nroot = Stack([title, tbl])\ntitle = TextContent(\"Top Languages\", \"large-heavy\")\ntbl = Table([Col(\"Language\", langs), Col(\"Users (M)\", users), Col(\"Year\", years)])\nlangs = [\"Python\", \"JavaScript\", \"Java\", \"TypeScript\", \"Go\"]\nusers = [15.7, 14.2, 12.1, 8.5, 5.2]\nyears = [1991, 1995, 1995, 2012, 2009]\n\nExample 2 — Bar chart:\n\nroot = Stack([title, chart])\ntitle = TextContent(\"Q4 Revenue\", \"large-heavy\")\nchart = BarChart(labels, [s1, s2], \"grouped\")\nlabels = [\"Oct\", \"Nov\", \"Dec\"]\ns1 = Series(\"Product A\", [120, 150, 180])\ns2 = Series(\"Product B\", [90, 110, 140])\n\nExample 3 — Form with validation:\n\nroot = Stack([title, form])\ntitle = TextContent(\"Contact Us\", \"large-heavy\")\nform = Form(\"contact\", btns, [nameField, emailField, countryField, msgField])\nnameField = FormControl(\"Name\", Input(\"name\", \"Your name\", \"text\", { required: true, minLength: 2 }))\nemailField = FormControl(\"Email\", Input(\"email\", \"you@example.com\", \"email\", { required: true, email: true }))\ncountryField = FormControl(\"Country\", Select(\"country\", countryOpts, \"Select...\", { required: true }))\nmsgField = FormControl(\"Message\", TextArea(\"message\", \"Tell us more...\", 4, { required: true, minLength: 10 }))\ncountryOpts = [SelectItem(\"us\", \"United States\"), SelectItem(\"uk\", \"United Kingdom\"), SelectItem(\"de\", \"Germany\")]\nbtns = Buttons([Button(\"Submit\", Action([@ToAssistant(\"Submit\")]), \"primary\"), Button(\"Cancel\", Action([@ToAssistant(\"Cancel\")]), \"secondary\")])\n\nExample 4 — Tabs with mixed content:\n\nroot = Stack([title, tabs])\ntitle = TextContent(\"React vs Vue\", \"large-heavy\")\ntabs = Tabs([tabReact, tabVue])\ntabReact = TabItem(\"react\", \"React\", reactContent)\ntabVue = TabItem(\"vue\", \"Vue\", vueContent)\nreactContent = [TextContent(\"React is a library by Meta for building UIs.\"), Callout(\"info\", \"Note\", \"React uses JSX syntax.\")]\nvueContent = [TextContent(\"Vue is a progressive framework by Evan You.\"), Callout(\"success\", \"Tip\", \"Vue has a gentle learning curve.\")]\n</openui-examples>\n\n<openui-important-rules>\n- When asked about data, generate realistic/plausible data\n- Choose components that best represent the content (tables for comparisons, charts for trends, forms for input, etc.)\n- When you render data in an openui block (tables, charts, KPI cards), do NOT repeat the same numbers/facts in the markdown text outside the block.\n- Text outside the openui block can optionally include:\n  1. **Qualitative insights** — patterns, anomalies, or recommendations that aren't obvious from the visual (e.g. \"the high input-to-output ratio suggests document processing\")\n  2. **Actionable next steps** — what the user can do next\n  3. **Caveats/context** — things the data doesn't show\n- If all the information is already visible in the openui components, a brief one-line summary is sufficient — do not enumerate the same values again.\n</openui-important-rules>\n\n<openui-final-verification>\nBefore finishing, walk your output and verify:\n1. root = Stack(...) is the FIRST line (for optimal streaming).\n2. Every referenced name is defined. Every defined name (other than root) is reachable from root.\n\n- For grid-like layouts, use Stack with direction \"row\" and wrap=true. Avoid justify=\"between\" unless you specifically want large gutters.\n- For forms, define one FormControl reference per field so controls can stream progressively.\n- For forms, always provide the second Form argument with Buttons(...) actions: Form(name, buttons, fields).\n- Never nest Form inside Form.\n- Use @Reset($var1, $var2) after form submit to restore defaults — not @Set($var, \"\")\n- Multi-query refresh: Action([@Run(mutation), @Run(query1), @Run(query2), @Reset(...)])\n- $variables are reactive: changing via Select or @Set re-evaluates all Queries and expressions referencing them\n- Use existing components (Tabs, Accordion, Modal) before inventing ternary show/hide patterns\n</openui-final-verification>\n\n<openui-user-interaction-checklist>\n1. Will the response be UI heavy and will contain components which are not supported by markdown? Use openui if the answer is yes.\n2. ```openui``` fencing must be closed.\n</openui-user-interaction-checklist>\n</openui>",
+      "type": "tool.response",
+      "id": "01m15vfb6sajj9vhdw7vfqzdfq",
+      "created_at": "2026-08-29T04:12:03.673Z",
+      "thread_id": "main"
+    },
+    {
+      "content": "```openui\nroot = Stack([card])\ncard = Card([header, callout, purpose, audience, query, contract, output, suppressed], \"card\", \"column\", \"s\")\nheader = CardHeader(\"Release Clearance\", \"approved\")\ncallout = Callout(\"success\", \"Ready for human approval\", \"Authorized mission: weekly support trend → support leadership\")\npurpose = TextContent(\"Purpose: weekly support trend\", \"small\")\naudience = TextContent(\"Audience: support leadership\", \"small\")\nquery = TextContent(\"Query ID: q-7c6eaeba-ffee-49a0-bde7-9c7db5648d4e\", \"small\")\ncontract = TextContent(\"Contract hash: eab0f0aa59a5de0d17b37a41516ce973b0a34b9b81265eeb83b324b06f173f80\", \"small\")\noutput = TextContent(\"Output hash: 15ee956f5b8ed695a01c8f0e74abb8c3552848f605f5697682c0043e1a8c3969\", \"small\")\nsuppressed = TextContent(\"Suppressed cells: 14\", \"small\")\n```",
+      "tool_calls": [
+        {
+          "id": "call_f59ff2d25ef44831868754ae",
+          "type": "function",
+          "function": {
+            "name": "release_result",
+            "arguments": "{\"audience\":\"support leadership\",\"columns\":[\"week\", \"region\", \"ticket_count\"],\"contractHash\":\"eab0f0aa59a5de0d17b37a41516ce973b0a34b9b81265eeb83b324b06f173f80\",\"outputHash\":\"15ee956f5b8ed695a01c8f0e74abb8c3552848f605f5697682c0043e1a8c3969\",\"purpose\":\"weekly support trend\",\"queryId\":\"q-7c6eaeba-ffee-49a0-bde7-9c7db5648d4e\",\"suppressedCells\":14}"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "release_result",
+            "server_id": "vault",
+            "server_name": "vault"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m15vfb7e2ytrqkfn6k0j2fvz",
+      "created_at": "2026-08-29T04:12:14.509Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 11175,
+        "output_tokens": 725,
+        "cache_read_tokens": 6336,
+        "input_tokens_breakdown": {
+          "harness": 3147,
+          "skills": 0,
+          "instructions": 1435,
+          "tool_definitions": 528,
+          "messages": 6065
+        }
+      }
+    },
+    {
+      "type": "tool.approval_required",
+      "id": "01m15vfnshywc9d8c7rsvah6zv",
+      "created_at": "2026-08-29T04:12:14.513Z",
+      "thread_id": "main",
+      "tool_calls": [
+        {
+          "id": "call_f59ff2d25ef44831868754ae",
+          "source_event_id": "01m15vfb7e2ytrqkfn6k0j2fvz"
+        }
+      ]
+    },
+    {
+      "type": "turn.done",
+      "id": "01m15vfnsjgfprmppmkea7epra",
+      "created_at": "2026-08-29T04:12:14.514Z",
+      "state": {
+        "status": "done",
+        "output": null,
+        "required_actions": [
+          {
+            "type": "tool.approval_required",
+            "id": "01m15vfnshywc9d8c7rsvah6zv",
+            "created_at": "2026-08-29T04:12:14.513Z",
+            "thread_id": "main",
+            "tool_calls": [
+              {
+                "id": "call_f59ff2d25ef44831868754ae",
+                "source_event_id": "01m15vfb7e2ytrqkfn6k0j2fvz"
+              }
+            ]
+          }
+        ],
+        "completed_at": "2026-08-29T04:12:14.514Z",
+        "metrics": {
+          "total_input_tokens": 33687,
+          "total_output_tokens": 1177,
+          "total_tokens": 34864,
+          "total_cache_read_tokens": 27200,
+          "total_reasoning_tokens": 554
+        }
+      },
+      "thread_id": null
+    },
+    {
+      "type": "turn.created",
+      "id": "01m15vfnszg52j52wr34k1gawp",
+      "turn_id": "01m15vfnss4zpt9em3pfgyxhe9.local",
+      "previous_turn_id": "01m15vevxk3252qhgwtqbtdc9b.local",
+      "input": [
+        {
+          "type": "user.tool_approval",
+          "thread_id": "main",
+          "tool_call_id": "call_f59ff2d25ef44831868754ae",
+          "approval": {
+            "status": "allow"
+          }
+        }
+      ],
+      "state": {
+        "status": "running"
+      },
+      "created_at": "2026-08-29T04:12:14.524Z",
+      "thread_id": null
+    },
+    {
+      "type": "mcp.initialize",
+      "id": "01m15vfnt96kkb3nzrc77zdx1h",
+      "created_at": "2026-08-29T04:12:14.537Z",
+      "thread_id": "main",
+      "mcp_servers": [
+        {
+          "name": "vault",
+          "id": "vault",
+          "transport_type": "streamable-http"
+        }
+      ]
+    },
+    {
+      "tool_call_id": "call_f59ff2d25ef44831868754ae",
+      "content": "{\"receipt\":{\"receiptId\":\"r-2822d607-f0a6-47b2-b89b-430f68f7b66a\",\"queryId\":\"q-7c6eaeba-ffee-49a0-bde7-9c7db5648d4e\",\"contractHash\":\"eab0f0aa59a5de0d17b37a41516ce973b0a34b9b81265eeb83b324b06f173f80\",\"outputHash\":\"15ee956f5b8ed695a01c8f0e74abb8c3552848f605f5697682c0043e1a8c3969\",\"datasetVersion\":\"support-tickets-v1\",\"policyVersion\":\"policy-v1\"},\"columns\":[\"week\",\"region\",\"ticket_count\"],\"rows\":[{\"week\":\"2026-W30\",\"region\":\"EU\",\"ticket_count\":5},{\"week\":\"2026-W30\",\"region\":\"NA\",\"ticket_count\":3},{\"week\":\"2026-W31\",\"region\":\"EU\",\"ticket_count\":3},{\"week\":\"2026-W31\",\"region\":\"NA\",\"ticket_count\":10},{\"week\":\"2026-W32\",\"region\":\"EU\",\"ticket_count\":7},{\"week\":\"2026-W32\",\"region\":\"NA\",\"ticket_count\":3},{\"week\":\"2026-W33\",\"region\":\"EU\",\"ticket_count\":5},{\"week\":\"2026-W33\",\"region\":\"NA\",\"ticket_count\":3}],\"openui\":\"```openui\\nroot = Stack([card])\\ncard = Card([header, callout, receipt, query, contract, output, dataset, policy], \\\"card\\\", \\\"column\\\", \\\"s\\\")\\nheader = CardHeader(\\\"Release Receipt\\\", \\\"released\\\")\\ncallout = Callout(\\\"neutral\\\", \\\"Synthetic release recorded\\\", \\\"No external delivery was performed\\\")\\nreceipt = TextContent(\\\"Receipt ID: r-2822d607-f0a6-47b2-b89b-430f68f7b66a\\\", \\\"small\\\")\\nquery = TextContent(\\\"Query ID: q-7c6eaeba-ffee-49a0-bde7-9c7db5648d4e\\\", \\\"small\\\")\\ncontract = TextContent(\\\"Contract hash: eab0f0aa59a5de0d17b37a41516ce973b0a34b9b81265eeb83b324b06f173f80\\\", \\\"small\\\")\\noutput = TextContent(\\\"Output hash: 15ee956f5b8ed695a01c8f0e74abb8c3552848f605f5697682c0043e1a8c3969\\\", \\\"small\\\")\\ndataset = TextContent(\\\"Dataset version: support-tickets-v1\\\", \\\"small\\\")\\npolicy = TextContent(\\\"Policy version: policy-v1\\\", \\\"small\\\")\\n```\"}",
+      "type": "tool.response",
+      "id": "01m15vfntehzdwjgb6ye7whfew",
+      "created_at": "2026-08-29T04:12:14.542Z",
+      "thread_id": "main"
+    },
+    {
+      "content": "```openui\nroot = Stack([card])\ncard = Card([header, callout, receipt, query, contract, output, dataset, policy], \"card\", \"column\", \"s\")\nheader = CardHeader(\"Release Receipt\", \"released\")\ncallout = Callout(\"neutral\", \"Synthetic release recorded\", \"No external delivery was performed\")\nreceipt = TextContent(\"Receipt ID: r-2822d607-f0a6-47b2-b89b-430f68f7b66a\", \"small\")\nquery = TextContent(\"Query ID: q-7c6eaeba-ffee-49a0-bde7-9c7db5648d4e\", \"small\")\ncontract = TextContent(\"Contract hash: eab0f0aa59a5de0d17b37a41516ce973b0a34b9b81265eeb83b324b06f173f80\", \"small\")\noutput = TextContent(\"Output hash: 15ee956f5b8ed695a01c8f0e74abb8c3552848f605f5697682c0043e1a8c3969\", \"small\")\ndataset = TextContent(\"Dataset version: support-tickets-v1\", \"small\")\npolicy = TextContent(\"Policy version: policy-v1\", \"small\")\n```",
+      "tool_calls": [
+        {
+          "id": "call_16c9c10fdd5b494dbaa7a63b",
+          "type": "function",
+          "function": {
+            "name": "render_safe_chart",
+            "arguments": "{\"queryId\":\"q-7c6eaeba-ffee-49a0-bde7-9c7db5648d4e\"}"
+          },
+          "tool_info": {
+            "type": "mcp",
+            "name": "render_safe_chart",
+            "server_id": "vault",
+            "server_name": "vault"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m15vfntf90s9my0d29wk8aa9",
+      "created_at": "2026-08-29T04:12:23.981Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 12553,
+        "output_tokens": 462,
+        "cache_read_tokens": 11136,
+        "input_tokens_breakdown": {
+          "harness": 3147,
+          "skills": 0,
+          "instructions": 1435,
+          "tool_definitions": 528,
+          "messages": 7443
+        }
+      }
+    },
+    {
+      "tool_call_id": "call_16c9c10fdd5b494dbaa7a63b",
+      "content": "{\"queryId\":\"q-7c6eaeba-ffee-49a0-bde7-9c7db5648d4e\",\"receiptId\":\"r-2822d607-f0a6-47b2-b89b-430f68f7b66a\",\"title\":\"ticket_count by week, region\",\"dimensions\":[\"week\",\"region\"],\"metric\":\"ticket_count\",\"columns\":[\"week\",\"region\",\"ticket_count\"],\"rows\":[{\"week\":\"2026-W30\",\"region\":\"EU\",\"ticket_count\":5},{\"week\":\"2026-W30\",\"region\":\"NA\",\"ticket_count\":3},{\"week\":\"2026-W31\",\"region\":\"EU\",\"ticket_count\":3},{\"week\":\"2026-W31\",\"region\":\"NA\",\"ticket_count\":10},{\"week\":\"2026-W32\",\"region\":\"EU\",\"ticket_count\":7},{\"week\":\"2026-W32\",\"region\":\"NA\",\"ticket_count\":3},{\"week\":\"2026-W33\",\"region\":\"EU\",\"ticket_count\":5},{\"week\":\"2026-W33\",\"region\":\"NA\",\"ticket_count\":3}],\"sandboxProof\":{\"canonicalPayloadBase64\":\"W3sicmVnaW9uIjoiRVUiLCJ0aWNrZXRfY291bnQiOjUsIndlZWsiOiIyMDI2LVczMCJ9LHsicmVnaW9uIjoiTkEiLCJ0aWNrZXRfY291bnQiOjMsIndlZWsiOiIyMDI2LVczMCJ9LHsicmVnaW9uIjoiRVUiLCJ0aWNrZXRfY291bnQiOjMsIndlZWsiOiIyMDI2LVczMSJ9LHsicmVnaW9uIjoiTkEiLCJ0aWNrZXRfY291bnQiOjEwLCJ3ZWVrIjoiMjAyNi1XMzEifSx7InJlZ2lvbiI6IkVVIiwidGlja2V0X2NvdW50Ijo3LCJ3ZWVrIjoiMjAyNi1XMzIifSx7InJlZ2lvbiI6Ik5BIiwidGlja2V0X2NvdW50IjozLCJ3ZWVrIjoiMjAyNi1XMzIifSx7InJlZ2lvbiI6IkVVIiwidGlja2V0X2NvdW50Ijo1LCJ3ZWVrIjoiMjAyNi1XMzMifSx7InJlZ2lvbiI6Ik5BIiwidGlja2V0X2NvdW50IjozLCJ3ZWVrIjoiMjAyNi1XMzMifV0=\"},\"openui\":\"```openui\\nroot = Stack([card])\\ncard = Card([header, chart, note], \\\"card\\\", \\\"column\\\", \\\"s\\\")\\nheader = CardHeader(\\\"ticket_count by week, region\\\", \\\"receipt r-2822d607-f0a6-47b2-b89b-430f68f7b66a\\\")\\nchart = BarChart([\\\"2026-W30 · EU\\\", \\\"2026-W30 · NA\\\", \\\"2026-W31 · EU\\\", \\\"2026-W31 · NA\\\", \\\"2026-W32 · EU\\\", \\\"2026-W32 · NA\\\", \\\"2026-W33 · EU\\\", \\\"2026-W33 · NA\\\"], [series], \\\"grouped\\\", \\\"week, region\\\", \\\"ticket_count\\\")\\nseries = Series(\\\"ticket_count\\\", [5, 3, 3, 10, 7, 3, 5, 3])\\nnote = TextContent(\\\"14 finest-granularity aggregate cells suppressed inside the vault (k >= 3)\\\", \\\"small\\\")\\n```\"}",
+      "type": "tool.response",
+      "id": "01m15vfz1rm333bxw9scye39m4",
+      "created_at": "2026-08-29T04:12:23.992Z",
+      "thread_id": "main"
+    },
+    {
+      "content": "```openui\nroot = Stack([card])\ncard = Card([header, chart, note], \"card\", \"column\", \"s\")\nheader = CardHeader(\"ticket_count by week, region\", \"receipt r-2822d607-f0a6-47b2-b89b-430f68f7b66a\")\nchart = BarChart([\"2026-W30 · EU\", \"2026-W30 · NA\", \"2026-W31 · EU\", \"2026-W31 · NA\", \"2026-W32 · EU\", \"2026-W32 · NA\", \"2026-W33 · EU\", \"2026-W33 · NA\"], [series], \"grouped\", \"week, region\", \"ticket_count\")\nseries = Series(\"ticket_count\", [5, 3, 3, 10, 7, 3, 5, 3])\nnote = TextContent(\"14 finest-granularity aggregate cells suppressed inside the vault (k >= 3)\", \"small\")\n```",
+      "tool_calls": [
+        {
+          "id": "call_5f8c41a6d0044e97827755a4",
+          "type": "function",
+          "function": {
+            "name": "exec",
+            "arguments": "{\"command\":\"printf '%s' 'W3sicmVnaW9uIjoiRVUiLCJ0aWNrZXRfY291bnQiOjUsIndlZWsiOiIyMDI2LVczMCJ9LHsicmVnaW9uIjoiTkEiLCJ0aWNrZXRfY291bnQiOjMsIndlZWsiOiIyMDI2LVczMCJ9LHsicmVnaW9uIjoiRVUiLCJ0aWNrZXRfY291bnQiOjMsIndlZWsiOiIyMDI2LVczMSJ9LHsicmVnaW9uIjoiTkEiLCJ0aWNrZXRfY291bnQiOjEwLCJ3ZWVrIjoiMjAyNi1XMzEifSx7InJlZ2lvbiI6IkVVIiwidGlja2V0X2NvdW50Ijo3LCJ3ZWVrIjoiMjAyNi1XMzIifSx7InJlZ2lvbiI6Ik5BIiwidGlja2V0X2NvdW50IjozLCJ3ZWVrIjoiMjAyNi1XMzIifSx7InJlZ2lvbiI6IkVVIiwidGlja2V0X2NvdW50Ijo1LCJ3ZWVrIjoiMjAyNi1XMzMifSx7InJlZ2lvbiI6Ik5BIiwidGlja2V0X2NvdW50IjozLCJ3ZWVrIjoiMjAyNi1XMzMifV0=' | base64 --decode | sha256sum\",\"intent\":\"Verify the released aggregate payload hash in isolation\"}"
+          },
+          "tool_info": {
+            "type": "truefoundry-system",
+            "name": "exec"
+          }
+        }
+      ],
+      "type": "model.message",
+      "id": "01m15vfz1sh09nwh91b8kbm06n",
+      "created_at": "2026-08-29T04:12:42.744Z",
+      "thread_id": "main",
+      "finish_reason": "tool_calls",
+      "usage": {
+        "input_tokens": 13873,
+        "output_tokens": 1553,
+        "cache_read_tokens": 12544,
+        "input_tokens_breakdown": {
+          "harness": 3147,
+          "skills": 0,
+          "instructions": 1435,
+          "tool_definitions": 528,
+          "messages": 8763
+        }
+      }
+    },
+    {
+      "type": "sandbox.created",
+      "id": "01m15vgre6jed1s0qrtx7kthxt",
+      "created_at": "2026-08-29T04:12:49.990Z",
+      "sandbox_id": "v1:local:/Users/dineshjinjala/Library/Application Support/trueforge/sandboxes/01m15ver81mj2xhwasz8ex2zs9/01m15vghbxhqtxbhvjhznfmb17",
+      "thread_id": null
+    },
+    {
+      "tool_call_id": "call_5f8c41a6d0044e97827755a4",
+      "content": "{\"success\":true,\"response\":{\"exitCode\":0,\"result\":\"15ee956f5b8ed695a01c8f0e74abb8c3552848f605f5697682c0043e1a8c3969  -\\n\"}}",
+      "type": "tool.response",
+      "id": "01m15vgre79262tdsd46s3xehc",
+      "created_at": "2026-08-29T04:12:49.990Z",
+      "thread_id": "main"
+    },
+    {
+      "content": "The sandbox-computed sha256 digest `15ee956f5b8ed695a01c8f0e74abb8c3552848f605f5697682c0043e1a8c3969` equals the receipt outputHash, confirming the released payload is unchanged.",
+      "type": "model.message",
+      "id": "01m15vgre88yb4ryfnyrppwyr3",
+      "created_at": "2026-08-29T04:12:57.544Z",
+      "thread_id": "main",
+      "finish_reason": "stop",
+      "usage": {
+        "input_tokens": 15497,
+        "output_tokens": 145,
+        "cache_read_tokens": 13824,
+        "input_tokens_breakdown": {
+          "harness": 3147,
+          "skills": 0,
+          "instructions": 1435,
+          "tool_definitions": 528,
+          "messages": 10387
+        }
+      }
+    },
+    {
+      "type": "turn.done",
+      "id": "01m15vgztcb6zsrttw67n66px7",
+      "created_at": "2026-08-29T04:12:57.548Z",
+      "state": {
+        "status": "done",
+        "output": {
+          "content": "The sandbox-computed sha256 digest `15ee956f5b8ed695a01c8f0e74abb8c3552848f605f5697682c0043e1a8c3969` equals the receipt outputHash, confirming the released payload is unchanged.",
+          "type": "model.message",
+          "id": "01m15vgre88yb4ryfnyrppwyr3",
+          "created_at": "2026-08-29T04:12:57.544Z",
+          "thread_id": "main",
+          "finish_reason": "stop",
+          "usage": {
+            "input_tokens": 15497,
+            "output_tokens": 145,
+            "cache_read_tokens": 13824,
+            "input_tokens_breakdown": {
+              "harness": 3147,
+              "skills": 0,
+              "instructions": 1435,
+              "tool_definitions": 528,
+              "messages": 10387
+            }
+          }
+        },
+        "required_actions": [],
+        "completed_at": "2026-08-29T04:12:57.548Z",
+        "metrics": {
+          "total_input_tokens": 41923,
+          "total_output_tokens": 2160,
+          "total_tokens": 44083,
+          "total_cache_read_tokens": 37504,
+          "total_reasoning_tokens": 1108
+        }
+      },
+      "thread_id": null
+    }
+  ]
+}
