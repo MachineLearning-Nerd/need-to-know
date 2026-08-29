@@ -48,9 +48,15 @@ and honest about its edges.
 | Inline agent spec | Sessions snapshot the manifest; live verification requires its security-relevant fields to match the pinned build | `src/verify/live.ts` |
 | Custom UI (`@truefoundry/trueforge-ui`) | Clearance Console: evidence rail from vault tool responses, approval bar showing the exact pending tuple and hashes | `console/` |
 | Dynamic subagents | Deliberately disabled — 0.1.4 children inherit vault tools, which would break root-only release; the verifier rejects non-root chains | [LIMITATIONS.md](LIMITATIONS.md) |
+| Skills | Unused by design — the release flow is one fixed mission; no skill is attached and no credit is claimed | Agent manifest |
+| Code Mode | Unused — MCP tools are called directly, not driven through sandboxed code | Agent manifest |
+| Sandbox file downloads | Unused — the digest check reads stdout from persisted events; no artifact leaves the sandbox | Gate A proof chain |
+| MCP OAuth / header auth | Unused — the vault is a local loopback MCP fixture | `scripts/setup-trueforge.ts` |
+| Context management | Available but not exercised — sessions are short and bounded, so compaction never triggers | — |
 
-Every platform seam is either used with published evidence or explicitly
-dispositioned with the reason.
+Every TrueForge feature invoked by the submitted flow is evidenced above;
+capabilities the flow does not use are explicitly dispositioned rather than
+silently omitted.
 
 ## The honest numbers
 

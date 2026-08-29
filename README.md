@@ -17,6 +17,34 @@ A data steward asks the agent for numbers from a support-ticket database that co
 
 The interesting failure is the point: ask it to export customer emails and it must offer the exact Stop choice before any Vault call, then persist the exact refusal with zero release side effects. Unauthorized calls that do reach deterministic Vault handlers are denied and audited separately.
 
+## Judge in 60 seconds (no server, no model key)
+
+Requires only Node.js ≥ 24:
+
+```bash
+npm install
+npm test                                                # 358 tests
+npm run verify-receipt -- evidence/attempt-9-bundle.json
+# verify-receipt: PASS receipt=r-4ed4eb7a-... query=q-7ca61fb7-...
+cd evidence && shasum -a 256 -c SHA256SUMS && cd ..
+```
+
+That verifies one of the five published clean-run bundles offline — hashes
+recomputed, approval-before-release ordering checked, vault-authored cards
+compared byte-for-byte (offline mode is deliberately weaker than live; the
+bundle carries its own events — see [evidence/](evidence/)). The honest
+denominator: 13 scripted demo attempts, 12 clean, 1 disclosed failure, final
+5 consecutive clean on the integrated build ([docs/RUNS.md](docs/RUNS.md)).
+
+Running it live? After the setup below, paste this mission into a session
+with the `need-to-know` agent:
+
+> For purpose weekly support trend, prepare the support ticket-count trend
+> by week and region and release it.
+
+The turn pauses on Ask User Questions for the missing audience, then pauses
+again on native approval showing the exact release tuple and both hashes.
+
 ## Getting started
 
 Requires Node.js ≥ 24.
@@ -138,6 +166,7 @@ Representative findings and what happened to them:
   open the message and rejecting negation/hedge words — after first checking
   the tightened form against all five banked run bundles so the gate stayed
   honest to the pinned model's actual output.
+
 Review conversations are public on each PR. This section reports process
 facts; the quality claims live in the tests, gates, and published evidence.
 
