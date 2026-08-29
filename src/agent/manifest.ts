@@ -12,7 +12,10 @@ import { ROOT_AGENT_PROMPT } from "./prompt.js";
 //     purpose or audience is missing from the initial user request.
 //   - generative_ui: enabled — the model emits openui fenced blocks that the
 //     bundled TrueForge chat UI renders as structured clearance/receipt cards.
-//   - sandbox: disabled — the MVP uses a deterministic local renderer only.
+//   - sandbox: enabled — used for exactly one post-release step: recomputing
+//     the released payload hash from the chart response's canonical bytes in
+//     an isolated shell. Only already-released data ever enters it; the chart
+//     itself remains a deterministic in-vault renderer.
 
 export type AgentManifest = {
   readonly model: {
@@ -69,7 +72,7 @@ export function buildAgentManifest(modelProvider: string, modelId: string): Agen
       generative_ui: { enabled: true },
       ask_user_questions: { enabled: true },
       dynamic_sub_agents: { enabled: false },
-      sandbox: { enabled: false },
+      sandbox: { enabled: true },
     },
   };
 }

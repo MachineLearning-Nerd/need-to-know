@@ -40,6 +40,8 @@ import {
   gateABoundaryFailures,
   openUiBlocksRelayedVerbatim,
   pendingSessionInput,
+  sandboxActivityFailures,
+  sandboxHashProofFailures,
 } from "./gate-a-actions.js";
 import { gateCRefusalFailures } from "./gate-c-actions.js";
 
@@ -301,6 +303,26 @@ async function main(): Promise<void> {
       openUiBlocksRelayedVerbatim(persistedAllow.events),
       "persisted allow stream relays every vault-authored OpenUI block verbatim",
     );
+    const sandboxProof = sandboxHashProofFailures(persistedAllow.events);
+    check(
+      sandboxProof.length === 0,
+      `persisted allow stream witnesses the sandbox hash recomputation${
+        sandboxProof.length > 0 ? ` (${sandboxProof.join("; ")})` : ""
+      }`,
+    );
+    for (const [path, pathEvents] of [
+      ["deny", persistedDeny.events],
+      ["missing-purpose", persistedMissingPurpose.events],
+      ["exception", persistedException.events],
+    ] as const) {
+      const activity = sandboxActivityFailures(pathEvents);
+      check(
+        activity.length === 0,
+        `persisted ${path} stream touches no sandbox${
+          activity.length > 0 ? ` (${activity.join("; ")})` : ""
+        }`,
+      );
+    }
 
     const allowGated = gatedCallPositions(persistedAllow.events);
     check(allowGated.size >= 1, "persisted allow stream contains an approval_required gate");

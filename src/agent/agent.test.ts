@@ -98,8 +98,15 @@ describe("buildAgentManifest", () => {
     expect(manifest.config.generative_ui.enabled).toBe(true);
   });
 
-  it("disables sandbox", () => {
-    expect(manifest.config.sandbox.enabled).toBe(false);
+  it("enables the sandbox for the post-release hash check only", () => {
+    expect(manifest.config.sandbox.enabled).toBe(true);
+    // The prompt must pin the sandbox to the single step-8 verification and
+    // name the exact material allowed into it.
+    expect(manifest.instructions).toContain("Sandbox hash verification");
+    expect(manifest.instructions).toContain("printf '%s' 'B64' | base64 --decode | sha256sum");
+    expect(manifest.instructions).toContain(
+      "Use the sandbox ONLY for the single post-release hash verification",
+    );
   });
 
   it("uses temperature 0 for determinism", () => {

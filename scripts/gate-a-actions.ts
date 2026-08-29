@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import { CANCEL_OPTION, STOP_OPTIONS, STOP_QUESTION } from "../src/agent/prompt.js";
 import { ALLOWED_AUDIENCE, ALLOWED_PURPOSE } from "../src/contract/policy.js";
 import { lintOpenUiBlock } from "../src/render/lint.js";
@@ -323,6 +325,168 @@ export function exceptionQuestionPrecedesVaultTools(events: readonly GateStreamE
   if (question === undefined) return false;
   const answer = answeredQuestion(events, question, recommendedOption("Stop"));
   return answer !== -1 && vaultCallPositions.every((position) => answer < position);
+}
+
+type SandboxExec = { id: string; index: number; command: string };
+
+// Sandbox exec calls are truefoundry-system tools, not MCP tools, so they are
+// identified by tool_info rather than server binding.
+function sandboxExecCalls(events: readonly PersistedEvent[]): SandboxExec[] {
+  const execs: SandboxExec[] = [];
+  for (const [index, event] of events.entries()) {
+    if (event.type !== "model.message" || !Array.isArray(event.tool_calls)) continue;
+    for (const value of event.tool_calls) {
+      if (typeof value !== "object" || value === null || Array.isArray(value)) continue;
+      const call = value as {
+        id?: unknown;
+        function?: { name?: unknown; arguments?: unknown };
+        tool_info?: { type?: unknown; name?: unknown };
+      };
+      if (
+        call.function?.name !== "exec" ||
+        call.tool_info?.type !== "truefoundry-system" ||
+        call.tool_info.name !== "exec" ||
+        typeof call.id !== "string"
+      ) {
+        continue;
+      }
+      let command = "";
+      try {
+        const args =
+          typeof call.function.arguments === "string"
+            ? (JSON.parse(call.function.arguments) as { command?: unknown })
+            : (call.function.arguments as { command?: unknown });
+        if (typeof args?.command === "string") command = args.command;
+      } catch {
+        // command stays empty and fails the exact-command assertion below
+      }
+      execs.push({ id: call.id, index, command });
+    }
+  }
+  return execs;
+}
+
+function sandboxCreatedCount(events: readonly PersistedEvent[]): number {
+  return events.filter((event) => event.type === "sandbox.created").length;
+}
+
+// Sessions that never release must never touch the sandbox: the prompt allows
+// exactly one post-receipt use, so any activity here is a policy violation.
+export function sandboxActivityFailures(events: readonly PersistedEvent[]): string[] {
+  const failures: string[] = [];
+  const execs = sandboxExecCalls(events);
+  if (execs.length > 0) failures.push(`unexpected sandbox exec call (${execs.length})`);
+  const created = sandboxCreatedCount(events);
+  if (created > 0) failures.push(`unexpected sandbox.created event (${created})`);
+  return failures;
+}
+
+// The allow session's post-release sandbox proof, checked on PERSISTED events:
+// exactly one exec, after the chart response, running the exact pinned
+// pipeline over the chart response's canonical bytes; the gate independently
+// recomputes the digest from those bytes and requires it to equal the
+// receipt's outputHash; the exec output witnesses the same digest with exit
+// code 0; and the model states the digest afterwards in plain text.
+export function sandboxHashProofFailures(events: readonly PersistedEvent[]): string[] {
+  const failures: string[] = [];
+
+  let outputHash: string | undefined;
+  let payloadBase64: string | undefined;
+  let chartResponseIndex = -1;
+  for (const [index, event] of events.entries()) {
+    if (
+      event.type !== "tool.response" ||
+      event.thread_id !== "main" ||
+      typeof event.content !== "string"
+    ) {
+      continue;
+    }
+    try {
+      const body = JSON.parse(event.content) as {
+        receipt?: { outputHash?: unknown };
+        sandboxProof?: { canonicalPayloadBase64?: unknown };
+      };
+      if (typeof body.receipt?.outputHash === "string") outputHash = body.receipt.outputHash;
+      if (typeof body.sandboxProof?.canonicalPayloadBase64 === "string") {
+        payloadBase64 = body.sandboxProof.canonicalPayloadBase64;
+        chartResponseIndex = index;
+      }
+    } catch {
+      // non-JSON responses (question answers, denials-as-text) are not proofs
+    }
+  }
+  if (outputHash === undefined) failures.push("no persisted release response carries a receipt");
+  if (payloadBase64 === undefined || chartResponseIndex === -1) {
+    failures.push("no persisted chart response carries sandboxProof.canonicalPayloadBase64");
+  }
+  if (outputHash === undefined || payloadBase64 === undefined) return failures;
+
+  const decoded = Buffer.from(payloadBase64, "base64");
+  if (decoded.toString("base64") !== payloadBase64) {
+    failures.push("canonicalPayloadBase64 is not canonical base64");
+  }
+  const recomputed = createHash("sha256").update(decoded).digest("hex");
+  if (recomputed !== outputHash) {
+    failures.push("sha256 of the decoded canonical payload does not equal receipt outputHash");
+  }
+
+  const execs = sandboxExecCalls(events);
+  if (execs.length !== 1) {
+    failures.push(`expected exactly one sandbox exec call, saw ${execs.length}`);
+    return failures;
+  }
+  const exec = execs[0];
+  if (exec === undefined) return failures;
+  if (exec.index <= chartResponseIndex) {
+    failures.push("sandbox exec ran before the chart response delivered the proof bytes");
+  }
+  const expectedCommand = `printf '%s' '${payloadBase64}' | base64 --decode | sha256sum`;
+  if (exec.command !== expectedCommand) {
+    failures.push("sandbox exec command is not the exact pinned hash pipeline");
+  }
+  if (sandboxCreatedCount(events) !== 1) {
+    failures.push("expected exactly one sandbox.created event");
+  }
+
+  const execResponse = events.findIndex((event, index) => {
+    if (
+      index <= exec.index ||
+      event.type !== "tool.response" ||
+      event.tool_call_id !== exec.id ||
+      typeof event.content !== "string"
+    ) {
+      return false;
+    }
+    try {
+      const body = JSON.parse(event.content) as {
+        success?: unknown;
+        response?: { exitCode?: unknown; result?: unknown };
+      };
+      return (
+        body.success === true &&
+        body.response?.exitCode === 0 &&
+        typeof body.response.result === "string" &&
+        body.response.result.includes(outputHash)
+      );
+    } catch {
+      return false;
+    }
+  });
+  if (execResponse === -1) {
+    failures.push("no persisted sandbox exec response witnesses the digest with exit code 0");
+    return failures;
+  }
+  const statedAfter = events.some(
+    (event, index) =>
+      index > execResponse &&
+      event.type === "model.message" &&
+      event.thread_id === "main" &&
+      assistantPresentation(event).includes(outputHash),
+  );
+  if (!statedAfter) {
+    failures.push("no assistant message after the exec states the verified digest");
+  }
+  return failures;
 }
 
 export function openUiBlocksRelayedVerbatim(events: readonly PersistedEvent[]): boolean {

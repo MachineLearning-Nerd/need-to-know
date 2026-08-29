@@ -45,16 +45,25 @@ decision sit outside the root thread (`approval_source_mismatch`). The
 root-only guarantee is therefore enforced deterministically on every
 verified bundle instead of demonstrated statistically.
 
-## No sandbox is used or claimed
+## The sandbox is post-release only, and its isolation is not the claim
 
-The pinned runtime's standalone local sandbox works — a gate proving one
-real sandbox exec inside a live turn, with a marker string round-tripping
-through persisted events, passed before the build window and re-passed
-in-window on 2026-08-27. The deployment still excludes it deliberately:
-the chart is produced by a deterministic renderer inside the vault, so no
-code-execution surface exists on the release path, and no
-isolated-execution claim is made. The passing gate is retained as evidence
-that the seam exists, not as part of the product.
+The sandbox is used for exactly one step, after a receipt exists: recomputing
+the released payload's sha256 from the canonical bytes the chart response
+carries, and comparing it to the receipt's outputHash. Only already-released
+data ever enters it; the chart itself remains a deterministic in-vault
+renderer, and no code execution sits anywhere on the pre-release path. Gate A
+asserts all of this on persisted events — exactly one exec, the exact pinned
+command, exit code 0, the digest witnessed and restated, and zero sandbox
+activity in every session that never releases.
+
+Two honest boundaries. First, the standalone build's local sandbox executes
+on the host — it is the platform's seam, not a hardened isolation boundary,
+so the check's value is the independently witnessed recomputation, not
+isolation strength. Second, the model relays the canonical bytes from the
+chart response into the exec command, so a model that mangles them fails the
+gate (exact-command check) rather than producing a false PASS — the gate
+recomputes the digest from the persisted command bytes itself before
+trusting anything the sandbox printed.
 
 ## OpenUI relay provenance is detected after the run
 
