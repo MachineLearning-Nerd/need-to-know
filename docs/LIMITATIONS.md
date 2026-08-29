@@ -45,25 +45,27 @@ decision sit outside the root thread (`approval_source_mismatch`). The
 root-only guarantee is therefore enforced deterministically on every
 verified bundle instead of demonstrated statistically.
 
-## The sandbox is post-release only, and its isolation is not the claim
+## Passing runs use the sandbox post-release only; isolation is not the claim
 
-The sandbox is used for exactly one step, after a receipt exists: recomputing
-the released payload's sha256 from the canonical bytes the chart response
-carries, and comparing it to the receipt's outputHash. Only already-released
-data ever enters it; the chart itself remains a deterministic in-vault
-renderer, and no code execution sits anywhere on the pre-release path. Gate A
-asserts all of this on persisted events — exactly one exec, the exact pinned
-command, exit code 0, the digest witnessed and restated, and zero sandbox
-activity in every session that never releases.
+The passing flow uses the sandbox for exactly one step, after a receipt exists:
+recomputing the released payload's sha256 from the canonical bytes the chart
+response carries, and comparing it to the receipt's outputHash. Gate A accepts
+a run only when that use follows release and every session that never releases
+has zero sandbox activity. Pre-release use is prompt-forbidden and detected on
+persisted events afterward, not runtime-blocked. The chart itself remains a
+deterministic in-vault renderer, with no required code execution on the
+pre-release path.
 
 Two honest boundaries. First, the standalone build's local sandbox executes
 on the host — it is the platform's seam, not a hardened isolation boundary,
 so the check's value is the independently witnessed recomputation, not
-isolation strength. Second, the model relays the canonical bytes from the
-chart response into the exec command, so a model that mangles them fails the
-gate (exact-command check) rather than producing a false PASS — the gate
-recomputes the digest from the persisted command bytes itself before
-trusting anything the sandbox printed.
+isolation strength. The prompt's phrase "in isolation" means this calculation
+is separate from the Vault release handler; it does not claim process or host
+isolation. Second, the model relays the canonical bytes from the chart response
+into the exec command, so a model that mangles them fails the gate
+(exact-command check) rather than producing a false PASS — the gate recomputes
+the digest from the persisted command bytes itself and does not rely on sandbox
+stdout alone.
 
 ## OpenUI relay provenance is detected after the run
 

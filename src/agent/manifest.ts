@@ -12,10 +12,9 @@ import { ROOT_AGENT_PROMPT } from "./prompt.js";
 //     purpose or audience is missing from the initial user request.
 //   - generative_ui: enabled — the model emits openui fenced blocks that the
 //     bundled TrueForge chat UI renders as structured clearance/receipt cards.
-//   - sandbox: enabled — used for exactly one post-release step: recomputing
-//     the released payload hash from the chart response's canonical bytes in
-//     an isolated shell. Only already-released data ever enters it; the chart
-//     itself remains a deterministic in-vault renderer.
+//   - sandbox: enabled — the prompt restricts it to one post-release hash
+//     recomputation; Gate A detects any drift on persisted events. This is not
+//     a runtime sequencing control or an isolation claim.
 
 export type AgentManifest = {
   readonly model: {

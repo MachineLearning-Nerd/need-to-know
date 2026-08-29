@@ -22,7 +22,7 @@ the known gaps in the evidence chain.
 | Model / agent | Untrusted | Treated as a confused-deputy channel: it can propose, relay, and phrase, but every release input it supplies is re-checked deterministically inside the vault. |
 | TrueForge harness | Trusted for persistence and control flow, not as a cryptographic attester | It stores events and stops the turn for approval. Its approval carries a tool-call reference, not the arguments or a hash — see "structural, not cryptographic" below. |
 | Human approver | Decision maker | Approves or denies the paused `release_result` with the tuple and hashes displayed; the deployment does not verify *who* is at the keyboard (see LIMITATIONS). |
-| Sandbox | Post-release compute, untrusted output | Runs exactly one pinned command after a receipt exists, over already-released canonical bytes only. Gate A recomputes the digest from the persisted command itself, so a lying sandbox (or a model that mangles the bytes) is caught, not believed. |
+| Sandbox | Post-release compute in passing runs, untrusted output | Gate A accepts the release run only when one pinned command follows the receipt and uses the released canonical bytes. It independently recomputes the digest from the persisted command bytes and requires exact successful stdout, so correctness does not rely on stdout alone. Pre-receipt use fails Gate A but is not runtime-blocked. |
 | Verifier (`verify-receipt`) | Independent checker | Recomputes hashes and cards from the bundle and the server's persisted events; trusts the TrueForge instance it queries, so it is operational evidence, not proof against a TrueForge administrator. |
 
 ## What is enforced deterministically (not asked of the model)

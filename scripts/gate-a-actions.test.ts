@@ -1027,7 +1027,7 @@ describe("sandbox hash proof", () => {
     thread_id: "main",
     content: `The sandbox-computed sha256 digest ${digest} equals the receipt outputHash.`,
   };
-  const happy = [releaseResponse, chartResponse, sandboxCreated, execCall, execResponse, statement];
+  const happy = [releaseResponse, chartResponse, execCall, sandboxCreated, execResponse, statement];
 
   it("passes the complete post-release proof chain", () => {
     expect(sandboxHashProofFailures(happy)).toEqual([]);
@@ -1047,8 +1047,8 @@ describe("sandbox hash proof", () => {
       sandboxHashProofFailures([
         releaseResponse,
         chartResponse,
-        sandboxCreated,
         drifted,
+        sandboxCreated,
         execResponse,
         statement,
       ]),
@@ -1068,8 +1068,8 @@ describe("sandbox hash proof", () => {
       sandboxHashProofFailures([
         releaseResponse,
         tampered,
-        sandboxCreated,
         execCall,
+        sandboxCreated,
         execResponse,
         statement,
       ]),
@@ -1080,13 +1080,23 @@ describe("sandbox hash proof", () => {
     expect(
       sandboxHashProofFailures([
         releaseResponse,
-        sandboxCreated,
         execCall,
+        sandboxCreated,
         execResponse,
         chartResponse,
         statement,
       ]),
     ).toContain("sandbox exec ran before the chart response delivered the proof bytes");
+    expect(
+      sandboxHashProofFailures([
+        releaseResponse,
+        chartResponse,
+        execCall,
+        execResponse,
+        sandboxCreated,
+        statement,
+      ]),
+    ).toContain("sandbox.created event is not between the exec call and response");
   });
 
   it("fails on a non-zero exit code", () => {
@@ -1098,9 +1108,26 @@ describe("sandbox hash proof", () => {
       sandboxHashProofFailures([
         releaseResponse,
         chartResponse,
-        sandboxCreated,
         execCall,
+        sandboxCreated,
         failed,
+        statement,
+      ]),
+    ).toContain("no persisted sandbox exec response witnesses the digest with exit code 0");
+    const embeddedDigest = {
+      ...execResponse,
+      content: JSON.stringify({
+        success: true,
+        response: { exitCode: 0, result: `expected digest: ${digest}` },
+      }),
+    };
+    expect(
+      sandboxHashProofFailures([
+        releaseResponse,
+        chartResponse,
+        execCall,
+        sandboxCreated,
+        embeddedDigest,
         statement,
       ]),
     ).toContain("no persisted sandbox exec response witnesses the digest with exit code 0");
@@ -1111,27 +1138,57 @@ describe("sandbox hash proof", () => {
       sandboxHashProofFailures([
         releaseResponse,
         chartResponse,
-        sandboxCreated,
         execCall,
+        sandboxCreated,
         execResponse,
       ]),
     ).toContain("no assistant message after the exec affirms the digest equality");
   });
 
-  it("rejects a statement that quotes the digest inside a negation", () => {
-    const negated = {
-      type: "model.message",
-      thread_id: "main",
-      content: `The sandbox digest ${digest} does not equal the receipt outputHash.`,
-    };
+  it("accepts the pinned affirmation with the model's variable trailing clause", () => {
+    const observedVariants = [
+      `The sandbox-computed sha256 digest ${digest} equals the receipt outputHash, confirming the released payload is unchanged.`,
+      `The sandbox-computed sha256 digest \`${digest}\` equals the receipt outputHash, confirming the released payload is byte-identical to the approved contract output.`,
+      `The sandbox-computed sha256 digest ${digest} equals the receipt outputHash.\n\nRelease complete: 8 released cells, 14 cells suppressed (k >= 3).`,
+    ];
+    for (const content of observedVariants) {
+      expect(
+        sandboxHashProofFailures([
+          releaseResponse,
+          chartResponse,
+          execCall,
+          sandboxCreated,
+          execResponse,
+          { type: "model.message", thread_id: "main", content },
+        ]),
+      ).toEqual([]);
+    }
+  });
+
+  it("rejects negated, ambiguous, and unrelated digest statements", () => {
+    const invalidStatements = [
+      `The sandbox digest ${digest} does not equal the receipt outputHash.`,
+      `I cannot confirm the sandbox-computed sha256 digest ${digest} equals the receipt outputHash.`,
+      `The sandbox-computed sha256 digest ${digest} possibly equals the receipt outputHash.`,
+      `The receipt outputHash equals ${digest}, but this says nothing about the sandbox result.`,
+      `This assertion is false. The sandbox-computed sha256 digest ${digest} equals the receipt outputHash.`,
+    ];
+    for (const content of invalidStatements) {
+      expect(
+        sandboxHashProofFailures([
+          releaseResponse,
+          chartResponse,
+          execCall,
+          sandboxCreated,
+          execResponse,
+          { type: "model.message", thread_id: "main", content },
+        ]),
+      ).toContain("no assistant message after the exec affirms the digest equality");
+    }
     expect(
       sandboxHashProofFailures([
-        releaseResponse,
-        chartResponse,
-        sandboxCreated,
-        execCall,
-        execResponse,
-        negated,
+        ...happy,
+        { type: "model.message", thread_id: "main", content: "Additional commentary." },
       ]),
     ).toContain("no assistant message after the exec affirms the digest equality");
   });
@@ -1141,8 +1198,8 @@ describe("sandbox hash proof", () => {
       sandboxHashProofFailures([
         releaseResponse,
         chartResponse,
-        sandboxCreated,
         execCall,
+        sandboxCreated,
         execResponse,
         execCall,
         statement,
