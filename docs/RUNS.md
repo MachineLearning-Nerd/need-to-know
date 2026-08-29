@@ -7,9 +7,12 @@ same live server on the bundle that attempt just produced. The harness
 (`npm run clean-run`) banks a not-clean record before the run starts, so an
 interrupted attempt can never vanish from the denominator.
 
-**Tally: 7 of 8 attempts clean, including the final 5 consecutive
-(attempts 4–8).** Attempt 3 failed one Gate A assertion and is recorded
-below like every other attempt.
+**Tally: 12 of 13 attempts clean.** Attempt 3 failed one Gate A assertion
+and is recorded below like every other attempt. Attempts 1–8 ran the
+pre-sandbox build (final 5 consecutive: attempts 4–8); attempts 9–13 are
+five consecutive clean runs of the integrated build, where Gate A
+additionally asserts the post-release sandbox hash recomputation on
+persisted events (see the section below).
 
 All runs used TrueForge `0.1.4` at `http://localhost:8891` with model
 `zai/glm-5.2` at temperature 0. Turn IDs listed are the allow session's;
@@ -88,3 +91,48 @@ passed; the live PASS lines below are from that re-verification. Attempts
 - Sessions: deny `01m13t0kj8k37apdxsnzjx0hra`, missing-purpose `01m13t22fbn4y6nnej9j0vtaz7`, exception `01m13t3e1xyx2d8q3xhmdm4fxp`, allow `01m13t3qt4hw2yet8m3tjrve43`.
 - Allow turns: `01m13t3qtasfc425eg0fne49t8.local`, `01m13t3zqmq0ch3fxy8a7cabpk.local`, `01m13t4van3d3mfda5nx9p4s89.local`.
 - Verifier (live): `verify-receipt: PASS receipt=r-d408000f-f120-4f18-a256-da2c836498b7 query=q-a2503246-9a6c-4c18-bde7-93cff8972395`
+
+## Integrated sandbox build — attempts 9–13, five consecutive CLEAN
+
+From attempt 9 onward the deployment enables the TrueForge sandbox for one
+post-release step: the agent recomputes the released payload's sha256 from
+the canonical bytes in the chart response, and Gate A asserts on persisted
+events that exactly one exec ran the exact pinned command after the chart
+response with exit code 0, that the digest (independently recomputed by the
+gate) equals the receipt's outputHash, and that no session that failed to
+release touched the sandbox.
+
+### Attempt 9 — CLEAN
+
+- Started 2026-08-29T04:04:36.730Z, 165 s.
+- Sessions: deny `01m15v1q7g5q8jdmqqtjz4qkds`, missing-purpose `01m15v2y8desqqa35prpy5jf9a`, exception `01m15v4e9bcg6f452sm64b1tzz`, allow `01m15v4m6wr4yecghca0v1vmsh`.
+- Allow turns: `01m15v4m71k69nmgckf40nx1dk.local`, `01m15v4s53gygasyk848yb88xs.local`, `01m15v5ht4fgc00xe4yt9kp821.local`.
+- Verifier (live): `verify-receipt: PASS receipt=r-4ed4eb7a-2b07-4df3-97e3-1c8693b29098 query=q-7ca61fb7-d04e-44b4-91a9-fff6d132b80d`
+
+### Attempt 10 — CLEAN
+
+- Started 2026-08-29T04:07:21.703Z, 163 s.
+- Sessions: deny `01m15v6ras527c29kmwkay047k`, missing-purpose `01m15v85new0jf7w6t4f2rwn5p`, exception `01m15v9a6bkczyx6hcbptysjsn`, allow `01m15v9mf547w4181pvwqfek8h`.
+- Allow turns: `01m15v9mfa09qj3d7027f0jcq2.local`, `01m15v9sq17wrddgq1vb2sd3c8.local`, `01m15vam4fdxw26nrmjch9kz2f.local`.
+- Verifier (live): `verify-receipt: PASS receipt=r-5f1366da-c86b-4c39-a097-6d642b44c58b query=q-4139b41d-c54a-41f3-8744-bf3d6dfdb3b7`
+
+### Attempt 11 — CLEAN
+
+- Started 2026-08-29T04:10:04.659Z, 173 s.
+- Sessions: deny `01m15vbqgw1apcsf3sf5p19t4n`, missing-purpose `01m15vd671atn3cxr11rxqay6h`, exception `01m15veha1571xvmm1wpakc4x0`, allow `01m15ver81mj2xhwasz8ex2zs9`.
+- Allow turns: `01m15ver84yjz7b7ce0jnyf3k4.local`, `01m15vevxk3252qhgwtqbtdc9b.local`, `01m15vfnss4zpt9em3pfgyxhe9.local`.
+- Verifier (live): `verify-receipt: PASS receipt=r-2822d607-f0a6-47b2-b89b-430f68f7b66a query=q-7c6eaeba-ffee-49a0-bde7-9c7db5648d4e`
+
+### Attempt 12 — CLEAN
+
+- Started 2026-08-29T04:12:58.212Z, 130 s.
+- Sessions: deny `01m15vh0zvwnjewmgbvcx0ycgq`, missing-purpose `01m15vj1kgw95bhgv264dq0q2e`, exception `01m15vk9xhfhh8g4mtqxzjbz6x`, allow `01m15vkf4e5q5eymm7jdr2qda8`.
+- Allow turns: `01m15vkf4kssmrq53aadntx030.local`, `01m15vknza9wwfd1fqgp76t89p.local`, `01m15vm6rdjnynqjfh5zhx7z9a.local`.
+- Verifier (live): `verify-receipt: PASS receipt=r-877fbbc0-251c-48b5-b0f0-e5f9feba05bf query=q-166a463b-1ec8-4073-b6b2-a2ba0e28ca35`
+
+### Attempt 13 — CLEAN
+
+- Started 2026-08-29T04:15:08.743Z, 143 s.
+- Sessions: deny `01m15vn0e4fbe2vwprmfxad039`, missing-purpose `01m15vp4ajty3gj5zgeekm43ve`, exception `01m15vq9zft1zg4sr583y1g9rz`, allow `01m15vqk3nrnfmf2bg3wxetg57`.
+- Allow turns: `01m15vqk3tbx2467gptf86tpf5.local`, `01m15vqqjjcq0yqz4efd4t4ptw.local`, `01m15vrc647490wn8q99x7av07.local`.
+- Verifier (live): `verify-receipt: PASS receipt=r-03cb7314-4a41-4731-85fc-b71f7ad49e5a query=q-7c66f9ac-9f3c-4d66-9185-124a6f6cdaa0`
