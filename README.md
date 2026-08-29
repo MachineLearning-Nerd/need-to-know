@@ -80,7 +80,11 @@ TRUEFORGE_BASE_URL=http://localhost:8891 npm run clean-run
 TRUEFORGE_BASE_URL=http://localhost:8891 npm run reconnect-proof
 ```
 
-Recorded clean-run results, with session/turn IDs and verifier output, are published in [docs/RUNS.md](docs/RUNS.md).
+Recorded clean-run results, with session/turn IDs and verifier output, are published in [docs/RUNS.md](docs/RUNS.md). The complete evidence bundles for the five consecutive clean integrated runs are committed under [evidence/](evidence/) with sha256 checksums — each verifies offline from a clean clone with no model key:
+
+```bash
+npm run verify-receipt -- evidence/attempt-9-bundle.json
+```
 
 ### Verifying a release receipt
 
@@ -103,6 +107,43 @@ What the system defends, against whom, and what it deliberately does not claim
 is in [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md). What the evidence chain
 does and does not prove is recorded honestly in
 [docs/LIMITATIONS.md](docs/LIMITATIONS.md).
+
+## Qodo Code Review Evidence
+
+Every one of the eleven merged pull requests went through automated review
+(Qodo on all; GitHub Copilot where triggered), and every review thread was
+dispositioned — fixed with a linked commit, or declined in-thread with a
+concrete technical reason. All threads across all PRs are resolved.
+
+Representative findings and what happened to them:
+
+- **Offline verification silently reported as clean**
+  ([PR #8](https://github.com/MachineLearning-Nerd/need-to-know/pull/8)):
+  Qodo caught that the clean-run harness did not force `TRUEFORGE_BASE_URL`
+  into the verifier child, so `verify-receipt` ran in offline mode while the
+  attempt was banked as clean. Fixed by resolving the base URL once and
+  injecting it into both children; the already-banked bundles were
+  re-verified live and the disclosure is recorded in
+  [docs/RUNS.md](docs/RUNS.md).
+- **A prior release survived a new mission in the console evidence rail**
+  ([PR #9](https://github.com/MachineLearning-Nerd/need-to-know/pull/9)):
+  a fresh `prepare_analysis` did not reset stale receipt state, so an old
+  receipt could be displayed against a new query. Fixed with a full evidence
+  reset on every preparation plus queryId binding on every later stage, and
+  covered by parser tests in the root suite.
+- **A negated sentence satisfied the digest-statement gate**
+  ([PR #11](https://github.com/MachineLearning-Nerd/need-to-know/pull/11)):
+  the sandbox proof accepted any assistant message containing the digest,
+  including "does not equal <hash>". Fixed by requiring the affirmation to
+  open the message and rejecting negation/hedge words — after first checking
+  the tightened form against all five banked run bundles so the gate stayed
+  honest to the pinned model's actual output.
+- Findings that did not apply were declined in-thread with technical
+  reasoning rather than silently dismissed — for example suggestions that
+  would have weakened an exact-match gate assertion into a looser check.
+
+Review conversations are public on each PR. This section reports process
+facts; the quality claims live in the tests, gates, and published evidence.
 
 ## AI-assisted development disclosure
 
