@@ -7,17 +7,17 @@ same live server on the bundle that attempt just produced. The harness
 (`npm run clean-run`) banks a not-clean record before the run starts, so an
 interrupted attempt can never vanish from the denominator.
 
-**Tally: 7 of 8 attempts clean, including the final 5 consecutively
+**Tally: 7 of 8 attempts clean, including the final 5 consecutive
 (attempts 4–8).** Attempt 3 failed one Gate A assertion and is recorded
 below like every other attempt.
 
 All runs used TrueForge `0.1.4` at `http://localhost:8891` with model
 `zai/glm-5.2` at temperature 0. Turn IDs listed are the allow session's;
 the other three sessions each paused exactly once on the expected Ask User
-Question. Raw artifacts (bundle, gate result, verifier output) live under
-`runs/attempt-<n>/`, which is deliberately not committed — the committed
-evidence is this record plus the verifiable IDs, and any attempt can be
-regenerated and re-verified with the commands in the README.
+Question. Raw artifacts (bundle, gate result, and verifier output when
+produced) live under `runs/attempt-<n>/`, which is deliberately not committed.
+This ledger publishes the recorded identifiers and verifier outputs; fresh
+artifacts can be regenerated and re-verified with the commands in the README.
 
 Verification-mode note: attempts 1, 2, and 4 originally ran the verifier in
 offline mode (the harness did not yet force `TRUEFORGE_BASE_URL` into the

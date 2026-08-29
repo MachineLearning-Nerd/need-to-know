@@ -18,23 +18,23 @@ the known gaps in the evidence chain.
 
 | Component | Trust | Why |
 | --- | --- | --- |
-| Vault process (SQLite + MCP server + contract) | Trusted | Holds raw rows; all enforcement is deterministic code inside it. Loopback-only, five-tool surface, no raw-row tool exists. |
-| Model / agent | Untrusted | Treated as a confused-deputy channel: it can propose, relay, and phrase, but every decision it could corrupt is re-checked deterministically inside the vault. |
-| TrueForge harness | Trusted for persistence and pauses, not for binding | It stores events and stops the turn for approval. Its approval carries a tool-call reference, not the arguments or a hash — see "structural, not cryptographic" below. |
+| Vault process (SQLite + MCP server + contract) | Trusted | Holds raw rows; release-policy enforcement is deterministic code inside it. Loopback-only, five-tool surface, no raw-row tool exists. |
+| Model / agent | Untrusted | Treated as a confused-deputy channel: it can propose, relay, and phrase, but every release input it supplies is re-checked deterministically inside the vault. |
+| TrueForge harness | Trusted for persistence and control flow, not as a cryptographic attester | It stores events and stops the turn for approval. Its approval carries a tool-call reference, not the arguments or a hash — see "structural, not cryptographic" below. |
 | Human approver | Decision maker | Approves or denies the paused `release_result` with the tuple and hashes displayed; the deployment does not verify *who* is at the keyboard (see LIMITATIONS). |
 | Verifier (`verify-receipt`) | Independent checker | Recomputes hashes and cards from the bundle and the server's persisted events; trusts the TrueForge instance it queries, so it is operational evidence, not proof against a TrueForge administrator. |
 
 ## What is enforced deterministically (not asked of the model)
 
 - **No raw-row egress path**: the tool schema has no query that returns row
-  values; sensitive columns cannot be named as dimensions; small cells are
+  values; sensitive columns are denied when named as dimensions; small cells are
   suppressed inside the vault before any candidate exists.
 - **Mission authorization**: one fixed purpose/audience pair, checked inside
   `prepare_analysis` before any query runs; everything else is denied and
   audited.
 - **Release integrity**: `release_result` revalidates the stored candidate,
   the full approved tuple, and both content hashes at execution time. Any
-  mismatch fails closed with an audit record and zero state transitions —
+  mismatch fails closed with an audit record and zero release side effects —
   replay included (one receipt per query, ever).
 - **Malformed input**: rejected at the tool schema before a handler runs;
   torn connections and oversized or non-JSON bodies neither apply state nor
@@ -45,10 +45,12 @@ the known gaps in the evidence chain.
 
 ## What is detected after the fact (not prevented at runtime)
 
-- **Card fidelity**: all OpenUI cards are vault-authored; the gates compare
-  the persisted stream byte-for-byte against recomputed cards. The pinned UI
-  has no pre-render hook, so an altered relay is caught by verification, not
-  suppressed on screen.
+- **Card fidelity**: the vault authors the expected clearance, denial, receipt,
+  and chart blocks. On the successful release path, Gate A compares persisted
+  clearance, receipt, and chart relays byte-for-byte with their Vault MCP
+  response blocks and rejects extra OpenUI fences. The pinned UI has no
+  pre-render hook, so an altered relay is caught after the run, not suppressed
+  on screen.
 - **Refusal shape**: bypass prompts must produce the exact Stop refusal with
   zero vault calls; this is proven on persisted events per run.
 
@@ -61,16 +63,15 @@ binding. TrueForge does not cryptographically bind the approval to the payload
 or its hash — what makes the human decision artifact-bound here is the vault's
 own execution-time revalidation of the tuple and hashes the human saw.
 
-For one typed synthetic release tool, we demonstrate a consent-integrity-
-inspired invariant; we do not implement Weng's full property. This project
+For one typed synthetic release tool, we demonstrate a consent-integrity-inspired invariant; we do not implement Weng's full property.
+
+This project
 does not claim to implement Consent Integrity, defeat lure-in-the-loop
 attacks, resist prompt injection in general, or provide a trusted path.
 
-Bounded display of structured release data (fixed row cap, deterministic
-suppression marker, hashes outside the scrollable region) follows the
-mitigation class prescribed by
-[EIP-7730](https://eips.ethereum.org/EIPS/eip-7730); it is applied here, not
-invented here.
+[EIP-7730](https://eips.ethereum.org/EIPS/eip-7730) is cited only as prior art
+for presenting structured data for human verification. This project does not
+implement that specification.
 
 ## Out of scope, on purpose
 
