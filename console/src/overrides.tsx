@@ -8,7 +8,7 @@ import {
   type ToolApprovalBarProps,
 } from "@truefoundry/trueforge-ui";
 import { useAuiState } from "@truefoundry/trueforge-ui/assistant-ui";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { releaseTupleFromArgsText } from "./evidence.js";
 
@@ -86,12 +86,44 @@ export function ClearanceAskUserPrompt(props: AskUserPromptProps) {
   );
 }
 
+type PendingApprovalPart = {
+  type?: string;
+  status?: { type?: string };
+  approval?: { approved?: unknown; resolution?: unknown } | null;
+};
+
+function partAwaitsApproval(part: PendingApprovalPart): boolean {
+  if (part.type !== "tool-call") return false;
+  if (part.status?.type !== "requires-action") return false;
+  const approval = part.approval;
+  return approval != null && approval.approved === undefined && approval.resolution === undefined;
+}
+
 // T8.4 — the steps moment: same disclosure widget, labelled as the audited
 // trail it maps to.
+//
+// The stock container auto-collapses the trail once a trailing text block
+// looks like a final answer. In this flow the released chart, the receipt
+// card, and the pending release_result approval all live inside that trail,
+// so collapsing it hides the deliverable — and, during the pause, the
+// Allow/Deny bar. The console owns the state instead: open by default,
+// never auto-collapsed, and the arrival of an undecided release approval
+// re-opens the card — the system never hides the decision on its own. An
+// explicit header toggle by the human still wins, including during the
+// pause; they chose to collapse it and can re-open it the same way.
 export function ClearanceAgentSteps(props: AgentStepsCardProps) {
+  const awaitingApproval = useAuiState((state) =>
+    (state.message.parts as readonly PendingApprovalPart[]).some(partAwaitsApproval),
+  );
+  const [expanded, setExpanded] = useState(true);
+  useEffect(() => {
+    if (awaitingApproval) setExpanded(true);
+  }, [awaitingApproval]);
   return (
     <AgentStepsCard
       {...props}
+      expanded={expanded}
+      onToggle={() => setExpanded((prev) => !prev)}
       borderColor="oklch(0.38 0.05 85)"
       background="oklch(0.2 0.012 265)"
     />
