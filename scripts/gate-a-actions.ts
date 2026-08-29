@@ -476,15 +476,21 @@ export function sandboxHashProofFailures(events: readonly PersistedEvent[]): str
     failures.push("no persisted sandbox exec response witnesses the digest with exit code 0");
     return failures;
   }
-  const statedAfter = events.some(
-    (event, index) =>
-      index > execResponse &&
-      event.type === "model.message" &&
-      event.thread_id === "main" &&
-      assistantPresentation(event).includes(outputHash),
-  );
+  // The statement must AFFIRM equality: a message quoting the digest inside
+  // "does not equal" prose would otherwise satisfy a bare substring check.
+  const statedAfter = events.some((event, index) => {
+    if (index <= execResponse || event.type !== "model.message" || event.thread_id !== "main") {
+      return false;
+    }
+    const text = assistantPresentation(event);
+    return (
+      text.includes(outputHash) &&
+      /\bequals\b/i.test(text) &&
+      !/\b(?:not|no|never|mismatch|differs?|unequal|fails?)\b/i.test(text)
+    );
+  });
   if (!statedAfter) {
-    failures.push("no assistant message after the exec states the verified digest");
+    failures.push("no assistant message after the exec affirms the digest equality");
   }
   return failures;
 }

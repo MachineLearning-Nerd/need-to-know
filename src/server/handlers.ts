@@ -300,7 +300,7 @@ export function createVaultHandlers(db: VaultDatabase, store: VaultStore): Vault
         rows,
         // Post-release sandbox check material: the exact canonical bytes
         // behind receipt.outputHash, base64-encoded so the agent can pipe
-        // them into an isolated hash recomputation without shell quoting.
+        // them into the sandbox hash recomputation without shell quoting.
         // Only rows already released above are encoded — nothing new leaves.
         sandboxProof: {
           canonicalPayloadBase64: Buffer.from(canonicalize(rows), "utf8").toString("base64"),

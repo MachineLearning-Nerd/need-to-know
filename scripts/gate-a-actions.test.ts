@@ -1025,7 +1025,7 @@ describe("sandbox hash proof", () => {
   const statement = {
     type: "model.message",
     thread_id: "main",
-    content: `Sandbox sha256 ${digest} matches the receipt outputHash.`,
+    content: `The sandbox-computed sha256 digest ${digest} equals the receipt outputHash.`,
   };
   const happy = [releaseResponse, chartResponse, sandboxCreated, execCall, execResponse, statement];
 
@@ -1115,7 +1115,25 @@ describe("sandbox hash proof", () => {
         execCall,
         execResponse,
       ]),
-    ).toContain("no assistant message after the exec states the verified digest");
+    ).toContain("no assistant message after the exec affirms the digest equality");
+  });
+
+  it("rejects a statement that quotes the digest inside a negation", () => {
+    const negated = {
+      type: "model.message",
+      thread_id: "main",
+      content: `The sandbox digest ${digest} does not equal the receipt outputHash.`,
+    };
+    expect(
+      sandboxHashProofFailures([
+        releaseResponse,
+        chartResponse,
+        sandboxCreated,
+        execCall,
+        execResponse,
+        negated,
+      ]),
+    ).toContain("no assistant message after the exec affirms the digest equality");
   });
 
   it("requires exactly one exec call", () => {
