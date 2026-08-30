@@ -1,16 +1,24 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
-import { deleteConsoleSession, sessionCanBeDeleted } from "../console/src/sessionDeletion.js";
+import {
+  deleteConsoleSession,
+  EVIDENCE_SESSION_IDS,
+  sessionCanBeDeleted,
+} from "../console/src/sessionDeletion.js";
 
-const EVIDENCE_SESSION_IDS = [
-  "01m15v4m6wr4yecghca0v1vmsh",
-  "01m15v9mf547w4181pvwqfek8h",
-  "01m15ver81mj2xhwasz8ex2zs9",
-  "01m15vkf4e5q5eymm7jdr2qda8",
-  "01m15vqk3nrnfmf2bg3wxetg57",
-];
+const publishedSessionIds = [9, 10, 11, 12, 13].map((attempt) => {
+  const bundle = JSON.parse(readFileSync(`evidence/attempt-${attempt}-bundle.json`, "utf8")) as {
+    evidence: { sessionId: string };
+  };
+  return bundle.evidence.sessionId;
+});
 
 describe("console session deletion", () => {
+  it("matches every published evidence bundle", () => {
+    expect(EVIDENCE_SESSION_IDS).toEqual(publishedSessionIds);
+  });
+
   it.each(EVIDENCE_SESSION_IDS)("rejects published evidence session %s", async (sessionId) => {
     const deleteSession = vi.fn(async () => undefined);
 

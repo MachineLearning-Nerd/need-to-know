@@ -26,6 +26,11 @@ Prerequisites: TrueForge running (default `http://localhost:8891`), the vault
 (`npm run setup-trueforge`). Select the **need-to-know** agent and start a
 session.
 
+Session deletion is an operator convenience scoped to this console. Published
+evidence sessions have no delete action here, and the console adapter rejects
+attempts to delete them. Direct administrative access to the TrueForge API is
+outside this UI safeguard.
+
 ## Fallback
 
 The console adds no backend: it drives the same TrueForge server as the

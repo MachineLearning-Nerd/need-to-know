@@ -23,7 +23,7 @@ Requires only Node.js ≥ 24:
 
 ```bash
 npm install
-npm test                                                # 364 tests
+npm test                                                # 365 tests
 npm run verify-receipt -- evidence/attempt-9-bundle.json
 # verify-receipt: PASS receipt=r-4ed4eb7a-... query=q-7ca61fb7-...
 cd evidence && shasum -a 256 -c SHA256SUMS && cd ..

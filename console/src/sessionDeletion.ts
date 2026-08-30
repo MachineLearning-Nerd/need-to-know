@@ -1,5 +1,5 @@
 // Live receipt verification refetches these published sessions.
-const EVIDENCE_SESSION_IDS = new Set([
+export const EVIDENCE_SESSION_IDS = Object.freeze([
   "01m15v4m6wr4yecghca0v1vmsh",
   "01m15v9mf547w4181pvwqfek8h",
   "01m15ver81mj2xhwasz8ex2zs9",
@@ -7,8 +7,10 @@ const EVIDENCE_SESSION_IDS = new Set([
   "01m15vqk3nrnfmf2bg3wxetg57",
 ]);
 
+const evidenceSessionIds = new Set<string>(EVIDENCE_SESSION_IDS);
+
 export function sessionCanBeDeleted(sessionId: string | undefined): boolean {
-  return sessionId !== undefined && !EVIDENCE_SESSION_IDS.has(sessionId);
+  return sessionId !== undefined && !evidenceSessionIds.has(sessionId);
 }
 
 export async function deleteConsoleSession(
@@ -16,7 +18,9 @@ export async function deleteConsoleSession(
   deleteSession: (sessionId: string) => Promise<unknown>,
 ): Promise<void> {
   if (!sessionCanBeDeleted(sessionId)) {
-    throw new Error("This session is pinned by a published evidence bundle and cannot be deleted.");
+    throw new Error(
+      "This session is pinned by a published evidence bundle and cannot be deleted from this console.",
+    );
   }
   await deleteSession(sessionId);
 }
