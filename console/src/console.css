@@ -10,7 +10,7 @@ body,
 }
 
 /* Chrome's native popover chrome leaks through the SDK's empty toast stack. */
-div[popover="manual"].pointer-events-none {
+div[popover="manual"].pointer-events-none.fixed.max-w-md.flex-col-reverse {
   border: 0;
   padding: 0;
 }
