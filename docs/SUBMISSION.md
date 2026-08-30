@@ -83,5 +83,5 @@ property.
 
 Built with AI coding assistants (Claude Code and Codex as pair programmers,
 Qodo for pull-request review). Every change was human-reviewed before merge
-across eleven task-sized PRs with a public review trail (see the Qodo
+across task-sized PRs with a public review trail (see the Qodo
 evidence section in the [README](../README.md)). All data is synthetic.
