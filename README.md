@@ -170,6 +170,42 @@ Representative findings and what happened to them:
 Review conversations are public on each PR. This section reports process
 facts; the quality claims live in the tests, gates, and published evidence.
 
+## Upstream finding: truefoundry/trueforge#508
+
+While recording demo runs we hit a race in TrueForge 0.1.4 itself:
+`createTurn` cancels the in-flight previous turn (`cancelled-for-next-turn`)
+*before* the new turn request is validated or persisted, and the stock
+approval bar stays clickable until the resolved status returns over the
+stream. A duplicate Approve submission can therefore cancel the very turn
+that is executing the approved tool — the approved side effect lands (the
+vault's receipt is written), but the post-approval output that presents it is
+truncated mid-stream. Diagnosed from the session's persisted events and
+reported upstream with root-cause pointers and suggested fixes:
+[truefoundry/trueforge#508](https://github.com/truefoundry/trueforge/issues/508).
+The vault's execution-time revalidation and one-release-per-query guard mean
+the race cannot double-release; it can only truncate the evidence
+presentation.
+
+## Prior art and references
+
+- **Consent integrity** — Xiaoqi Weng, *What You Approve Is What Executes:
+  Consent Integrity for Black-Box LLM Agents*,
+  [arXiv:2606.02668](https://arxiv.org/abs/2606.02668) (2026). Names the
+  broader property the approval beat here is inspired by. For one typed
+  synthetic release tool this project demonstrates a
+  consent-integrity-inspired invariant — the approval-referenced tuple and
+  hashes are revalidated at execution time; it does not implement Weng's
+  full property (truthful mediator rendering, trusted path).
+- **k-anonymity / small-cell suppression** — Latanya Sweeney, *k-Anonymity:
+  A Model for Protecting Privacy*, Int. J. Uncertainty, Fuzziness and
+  Knowledge-Based Systems 10(5), 2002. The contract's k ≥ 3 minimum group
+  size applies this classic small-cell suppression idea to released
+  aggregates.
+- **Structured data for human verification** —
+  [EIP-7730](https://eips.ethereum.org/EIPS/eip-7730), cited as prior art
+  for presenting structured payloads to a human before signing/approval (see
+  [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md)); not implemented here.
+
 ## AI-assisted development disclosure
 
 This project is built with AI coding assistants (Claude Code and Codex as pair programmers, Qodo for pull-request review). Every change is human-reviewed before merge, and the team owns and can explain the architecture and all technical decisions. All data in this repository is synthetic; no real personal data is used anywhere.
