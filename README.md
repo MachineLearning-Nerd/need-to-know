@@ -23,7 +23,7 @@ Requires only Node.js ≥ 24:
 
 ```bash
 npm install
-npm test                                                # 358 tests
+npm test                                                # 364 tests
 npm run verify-receipt -- evidence/attempt-9-bundle.json
 # verify-receipt: PASS receipt=r-4ed4eb7a-... query=q-7ca61fb7-...
 cd evidence && shasum -a 256 -c SHA256SUMS && cd ..
@@ -138,7 +138,7 @@ does and does not prove is recorded honestly in
 
 ## Qodo Code Review Evidence
 
-Every one of the eleven merged pull requests went through automated review
+Every merged pull request went through automated review
 (Qodo on all; GitHub Copilot where triggered). All review threads across
 those PRs are resolved; the examples below are concrete fixes, not a claim
 that review counts establish code quality.
