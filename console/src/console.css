@@ -9,6 +9,15 @@ body,
   margin: 0;
 }
 
+/* The session action menu is portaled outside the SDK theme root. */
+body {
+  --card-bg: oklch(0.22 0.014 265);
+  --border: oklch(0.32 0.02 265);
+  --text-primary: oklch(0.93 0.008 90);
+  --failure-bg: oklch(0.62 0.16 25);
+  --ghost-button-hover: oklch(0.3 0.02 265);
+}
+
 /* Chrome's native popover chrome leaks through the SDK's empty toast stack. */
 div[popover="manual"].pointer-events-none.fixed.max-w-md.flex-col-reverse {
   border: 0;
@@ -46,6 +55,11 @@ div[popover="manual"].pointer-events-none.fixed.max-w-md.flex-col-reverse {
   height: 26px;
 }
 
+.ck-brand-copy {
+  min-width: 0;
+  flex: 1;
+}
+
 .ck-brand-name {
   font-size: 13px;
   font-weight: 600;
@@ -55,6 +69,29 @@ div[popover="manual"].pointer-events-none.fixed.max-w-md.flex-col-reverse {
 .ck-brand-sub {
   font-size: 11px;
   color: oklch(0.68 0.015 265);
+}
+
+.ck-sessions-toggle {
+  flex-shrink: 0;
+  border: 1px solid oklch(0.32 0.02 265);
+  border-radius: 6px;
+  background: transparent;
+  color: oklch(0.68 0.015 265);
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.ck-sessions-toggle:hover,
+.ck-sessions-toggle:focus-visible {
+  color: oklch(0.75 0.12 85);
+  border-color: oklch(0.38 0.05 85);
+}
+
+.ck-sessions-opener {
+  align-self: flex-start;
+  margin: 12px 0 0 10px;
 }
 
 .ck-thread {
