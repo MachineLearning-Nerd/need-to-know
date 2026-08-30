@@ -42,6 +42,10 @@ div[popover="manual"].pointer-events-none.fixed.max-w-md.flex-col-reverse {
   background: oklch(0.19 0.012 265);
 }
 
+.ck-sessions[hidden] {
+  display: none;
+}
+
 .ck-brand {
   display: flex;
   align-items: center;
